@@ -25,6 +25,7 @@ from signal_evaluation import evaluate_signals
 from strategy_optimizer import run_strategy_optimization
 from scoring import compute_signal_score
 from human_layer import translate_ticker, _detect_situation
+import persistence
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
@@ -148,6 +149,42 @@ def calculate_rsi(series: pd.Series, period: int = 14) -> pd.Series:
 # Signal Lifecycle Engine
 # ---------------------------------------------------------------------------
 from datetime import datetime, timezone
+
+def _flatten_trade_data(ticker_entry: dict, market: str) -> dict:
+    """Flattens a ticker entry to match the persistence SQLite schema."""
+    plan = ticker_entry.get("trade_plan", {})
+    tracking = ticker_entry.get("trade_tracking", {})
+    
+    return {
+        "ticker": ticker_entry.get("ticker"),
+        "market": market,
+        "signal_type": ticker_entry.get("situation"),
+        "human_signal": ticker_entry.get("human_signal"),
+        "score_at_detection": ticker_entry.get("signal_strength_score", 0.0),
+        "signal_detected_at": ticker_entry.get("signal_detected_at"),
+        "trade_opened_at": tracking.get("trade_opened_at") or ticker_entry.get("signal_detected_at"),
+        "trade_closed_at": tracking.get("trade_closed_at"),
+        "signal_status_at_detection": ticker_entry.get("signal_status"),
+        "entry_window_status_at_detection": ticker_entry.get("entry_window_status"),
+        "market_context_used": ticker_entry.get("market_context_used"),
+        "signal_context_adjustment": ticker_entry.get("signal_context_adjustment", 0.0),
+        "entry_price": plan.get("entry_price", 0.0),
+        "stop_loss": plan.get("stop_loss", 0.0),
+        "take_profit": plan.get("take_profit", 0.0),
+        "risk_reward_ratio": plan.get("risk_reward", ""),
+        "trade_direction": plan.get("direction", ""),
+        "trade_status": tracking.get("trade_status", ""),
+        "trade_result": tracking.get("trade_result", ""),
+        "pnl_percentage": tracking.get("pnl_percentage", 0.0),
+        "pnl_absolute": tracking.get("pnl_absolute", 0.0),
+        "trade_duration_seconds": tracking.get("trade_duration_seconds", 0),
+        "exit_reason": tracking.get("exit_reason", ""),
+        "signal_invalid_reason": ticker_entry.get("signal_invalid_reason", ""),
+        "confidence_text": ticker_entry.get("confidence_text", ""),
+        "decision_clarity": ticker_entry.get("decision_clarity", ""),
+        "suggested_action": ticker_entry.get("suggested_action", ""),
+        "holding_period": ticker_entry.get("holding_period", "")
+    }
 
 def _generate_trade_plan(situation: str, entry_price: float) -> dict:
     """Generate the heuristic Trade Plan based on signal situation."""
@@ -660,6 +697,12 @@ def run_scan(market: str = DEFAULT_MARKET) -> tuple[list, list]:
         # --- Human Layer: translate to plain language ---
         human_fields = translate_ticker(ticker_entry, opt_cache)
         ticker_entry.update(human_fields)
+        
+        # --- Persistence Layer ---
+        tracking = ticker_entry.get("trade_tracking", {})
+        if tracking.get("trade_status", "").startswith("closed_"):
+            persistence.save_closed_trade(_flatten_trade_data(ticker_entry, market))
+            
         results.append(ticker_entry)
 
         # --- Alerts Generation ---
@@ -788,6 +831,7 @@ async def add_cache_control_headers(request: Request, call_next):
 
 @app.on_event("startup")
 async def startup_event():
+    persistence.init_db()
     # Start both background tasks independently
     asyncio.create_task(background_scanner())
     asyncio.create_task(background_sector_sync())
@@ -828,6 +872,11 @@ def get_top(market: str = DEFAULT_MARKET):
         return {"timestamp": None, "market": market, "data": []}
     top20 = sorted(data, key=lambda x: (x.get("signal_strength_score", 0.0), x.get("composite_score", 0)), reverse=True)[:20]
     return {"timestamp": scan.get("timestamp"), "market": market, "data": top20}
+
+@app.get("/api/history/debug")
+def get_history_debug(limit: int = 50):
+    """Debug endpoint to list recently persisted trades."""
+    return {"data": persistence.get_recent_history(limit)}
 
 @app.get("/api/ticker/{ticker}")
 def get_ticker_detail(ticker: str):
