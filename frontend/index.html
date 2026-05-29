@@ -444,24 +444,18 @@
         }
 
         @media (min-width: 900px) {
-            .modal-layout {
-                flex-direction: row;
-                overflow-y: hidden;
-            }
-            .modal-col-left {
-                flex: 1;
-                overflow-y: auto;
-                padding-right: 14px;
-            }
-            .modal-col-right {
-                width: 340px;
-                flex-shrink: 0;
-                display: flex;
-                flex-direction: column;
-                gap: 20px;
-                overflow-y: auto;
-                padding-right: 14px;
-            }
+            /* Retained for other possible media queries, though empty for modal now */
+        }
+
+        /* ── MODO SIMPLE: OVERRIDES DE LAYOUT ── */
+        body.mode-simple #chart-container {
+            width: 100% !important;
+            min-width: 100% !important;
+            max-width: 100% !important;
+        }
+        body.mode-simple #chart-container canvas {
+            width: 100% !important;
+            max-width: 100% !important;
         }
 
         .modal-top {
@@ -533,8 +527,8 @@
 
         .detail-grid {
             display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 10px;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 12px;
             margin-bottom: 0;
         }
         @media (max-width: 480px) {
@@ -1779,9 +1773,8 @@
                 </div>`;
             }
 
-            // Left Column
-            html += '<div class="modal-col-left">';
-
+            // Chart Section (Full Width)
+            html += '<div class="chart-section" style="width:100%;">';
             html += `
             <div class="tf-bar">
                 <button class="tf-btn active" data-period="1d" data-interval="1m" onclick="changeTimeframe(this, '${ticker}')">1D</button>
@@ -1790,42 +1783,14 @@
                 <button class="tf-btn" data-period="3mo" data-interval="1d" onclick="changeTimeframe(this, '${ticker}')">3M</button>
                 <button class="tf-btn" data-period="1y" data-interval="1d" onclick="changeTimeframe(this, '${ticker}')">1Y</button>
             </div>
-            <div id="chart-container"></div>
+            <div id="chart-container" style="width:100%; min-width:100%; max-width:100%;"></div>
             `;
+            html += '</div>';
 
-            // Financials — pro only block
-            html += '<div class="pro-only-block">';
-            if (Object.keys(fins).length > 0) {
-                html += '<h3 style="margin-bottom:10px;font-size:13px;color:var(--text-secondary)">Quarterly Financials</h3>';
-                const dates = Object.keys(fins).sort((a, b) => new Date(b) - new Date(a));
-                const metrics = Object.keys(fins[dates[0]]);
-                html += '<div style="width:100%;overflow:hidden;"><table class="fin-table"><thead><tr><th>Metric</th>';
-                dates.forEach(d => html += `<th>${d.substring(0, 10)}</th>`);
-                html += '</tr></thead><tbody>';
-                metrics.forEach(m => {
-                    html += `<tr><td style="text-align:left;font-weight:500">${m}</td>`;
-                    dates.forEach(d => {
-                        let v = fins[d][m];
-                        if (v != null) {
-                            let val = Number(v);
-                            let absVal = Math.abs(val);
-                            if (absVal >= 1e9) v = (val/1e9).toFixed(2) + 'B';
-                            else if (absVal >= 1e6) v = (val/1e6).toFixed(2) + 'M';
-                            else v = val.toLocaleString(undefined, {maximumFractionDigits: 2});
-                        } else {
-                            v = '—';
-                        }
-                        html += `<td>${v}</td>`;
-                    });
-                    html += '</tr>';
-                });
-                html += '</tbody></table></div>';
-            }
-            html += '</div>'; // end pro-only financials
-            html += '</div>'; // End Left Column
-
-            // Right Column — pro only
-            html += '<div class="modal-col-right pro-only-block">';
+            // Pro Only Section (Technical Data + Financials)
+            html += '<div class="pro-only-block" style="width:100%; display:flex; flex-direction:column; gap:24px;">';
+            
+            // Detail Grid
             html += '<div class="detail-grid">';
             
             if (scanItem) {
@@ -1879,7 +1844,38 @@
             if (scanItem) {
                 html += generateTechReading(scanItem);
             }
-            html += '</div>'; // End Right Column
+
+            // Financials Table
+            if (Object.keys(fins).length > 0) {
+                html += '<div class="financials-section" style="margin-top: 10px;">';
+                html += '<h3 style="margin-bottom:10px;font-size:13px;color:var(--text-secondary)">Quarterly Financials</h3>';
+                const dates = Object.keys(fins).sort((a, b) => new Date(b) - new Date(a));
+                const metrics = Object.keys(fins[dates[0]]);
+                html += '<div style="width:100%;overflow-x:auto;"><table class="fin-table"><thead><tr><th>Metric</th>';
+                dates.forEach(d => html += `<th>${d.substring(0, 10)}</th>`);
+                html += '</tr></thead><tbody>';
+                metrics.forEach(m => {
+                    html += `<tr><td style="text-align:left;font-weight:500">${m}</td>`;
+                    dates.forEach(d => {
+                        let v = fins[d][m];
+                        if (v != null) {
+                            let val = Number(v);
+                            let absVal = Math.abs(val);
+                            if (absVal >= 1e9) v = (val/1e9).toFixed(2) + 'B';
+                            else if (absVal >= 1e6) v = (val/1e6).toFixed(2) + 'M';
+                            else v = val.toLocaleString(undefined, {maximumFractionDigits: 2});
+                        } else {
+                            v = '—';
+                        }
+                        html += `<td>${v}</td>`;
+                    });
+                    html += '</tr>';
+                });
+                html += '</tbody></table></div>';
+                html += '</div>';
+            }
+
+            html += '</div>'; // End Pro Only Section
             html += '</div>'; // End Modal Layout
 
             body.innerHTML = html;
