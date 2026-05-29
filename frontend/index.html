@@ -1874,6 +1874,16 @@
             // Signal Lifecycle Block (both modes)
             if (scanItem && scanItem.signal_status) {
                 html += buildEstadoSenal(scanItem);
+                
+                // Trade Plan Block
+                if (scanItem.trade_plan && Object.keys(scanItem.trade_plan).length > 0) {
+                    html += buildTradePlan(scanItem.trade_plan);
+                }
+
+                // Trade Tracking Block
+                if (scanItem.trade_tracking && Object.keys(scanItem.trade_tracking).length > 0) {
+                    html += buildTradeTracking(scanItem.trade_tracking);
+                }
             }
 
             // Chart Section (Full Width)
@@ -2030,7 +2040,7 @@
     function buildLifecyclePills(item) {
         const status = item.signal_status || '';
         const entry  = item.entry_window_status || '';
-        if (!status) return '';
+        if (!status) return '<span class="lc-pill status-none">—</span>';
 
         const sm = lcStatusMeta(status);
         const em = lcEntryMeta(entry);
@@ -2103,6 +2113,93 @@
             html += `<div class="estado-senal-note ${noteClass}">${noteText}</div>`;
         }
         html += `</div>`;
+        return html;
+    }
+
+    /** Detailed block for modal — appears below estado de la señal if there is a plan */
+    function buildTradePlan(plan) {
+        if (!plan.entry_price) return '';
+
+        const dirStr = plan.direction === 'LONG' ? 'Comprar' : 'Vender Corto';
+        const dirCls = plan.direction === 'LONG' ? 'status-active' : 'status-expired';
+        const tpStr = plan.tp_pct > 0 ? `+${plan.tp_pct.toFixed(1)}%` : `${plan.tp_pct.toFixed(1)}%`;
+        const slStr = plan.sl_pct > 0 ? `+${plan.sl_pct.toFixed(1)}%` : `${plan.sl_pct.toFixed(1)}%`;
+
+        let html = `<div class="estado-senal" style="margin-top:-8px;">
+            <div class="estado-senal-title">🎯 ESTRATEGIA (SIMULACIÓN)</div>
+            <div class="estado-senal-grid">
+                <div class="estado-senal-item">
+                    <span class="estado-senal-label">Operación</span>
+                    <span class="estado-senal-value lc-pill ${dirCls}" style="width:fit-content; margin-top:2px;">${dirStr}</span>
+                </div>
+                <div class="estado-senal-item">
+                    <span class="estado-senal-label">Entrada Teórica</span>
+                    <span class="estado-senal-value">$${plan.entry_price.toFixed(2)}</span>
+                </div>
+                <div class="estado-senal-item">
+                    <span class="estado-senal-label" style="color:var(--red);">Stop Loss</span>
+                    <span class="estado-senal-value" style="color:var(--red);">$${plan.stop_loss.toFixed(2)} <span style="font-size:10px;">(${slStr})</span></span>
+                </div>
+                <div class="estado-senal-item">
+                    <span class="estado-senal-label" style="color:var(--green);">Objetivo (TP)</span>
+                    <span class="estado-senal-value" style="color:var(--green);">$${plan.take_profit.toFixed(2)} <span style="font-size:10px;">(${tpStr})</span></span>
+                </div>
+                <div class="estado-senal-item">
+                    <span class="estado-senal-label">Ratio Riesgo/Beneficio</span>
+                    <span class="estado-senal-value">${plan.risk_reward}</span>
+                </div>
+            </div>
+        </div>`;
+        return html;
+    }
+
+    /** Trade tracking block for modal */
+    function buildTradeTracking(tracking) {
+        if (!tracking.trade_status || tracking.trade_status === 'pending') return '';
+
+        let emoji = '🟢';
+        let label = 'En curso';
+        let pnlColor = 'var(--text-main)';
+        let pnlText = tracking.pnl_percentage > 0 ? `+${tracking.pnl_percentage.toFixed(2)}%` : `${tracking.pnl_percentage.toFixed(2)}%`;
+        
+        if (tracking.pnl_percentage > 0) pnlColor = 'var(--green)';
+        else if (tracking.pnl_percentage < 0) pnlColor = 'var(--red)';
+
+        if (tracking.trade_status === 'closed_win') {
+            emoji = '✅'; label = 'Ganador';
+        } else if (tracking.trade_status === 'closed_loss') {
+            emoji = '❌'; label = 'Perdedor';
+        } else if (tracking.trade_status === 'closed_expired') {
+            emoji = '⏳'; label = 'Expirado';
+        }
+
+        const durMin = Math.floor(tracking.trade_duration_seconds / 60);
+        const timeActive = durMin > 0 ? `${durMin} min` : `${tracking.trade_duration_seconds} s`;
+
+        let html = `<div class="estado-senal" style="margin-top:-8px; border-left: 3px solid #888;">
+            <div class="estado-senal-title">📊 SEGUIMIENTO EN VIVO</div>
+            <div class="estado-senal-grid">
+                <div class="estado-senal-item">
+                    <span class="estado-senal-label">Estado</span>
+                    <span class="estado-senal-value">${emoji} ${label}</span>
+                </div>
+                <div class="estado-senal-item">
+                    <span class="estado-senal-label">Resultado Actual</span>
+                    <span class="estado-senal-value" style="color:${pnlColor}; font-weight:bold;">${pnlText} <span style="font-size:10px; font-weight:normal; color:var(--text-muted)">($${tracking.pnl_absolute.toFixed(2)})</span></span>
+                </div>
+                <div class="estado-senal-item">
+                    <span class="estado-senal-label">Tiempo activo</span>
+                    <span class="estado-senal-value">${timeActive}</span>
+                </div>`;
+
+        if (tracking.exit_reason) {
+            html += `<div class="estado-senal-item">
+                    <span class="estado-senal-label">Motivo de salida</span>
+                    <span class="estado-senal-value">${tracking.exit_reason}</span>
+                </div>`;
+        }
+
+        html += `</div></div>`;
         return html;
     }
 

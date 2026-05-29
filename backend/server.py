@@ -24,7 +24,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from signal_evaluation import evaluate_signals
 from strategy_optimizer import run_strategy_optimization
 from scoring import compute_signal_score
-from human_layer import translate_ticker
+from human_layer import translate_ticker, _detect_situation
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
@@ -149,17 +149,133 @@ def calculate_rsi(series: pd.Series, period: int = 14) -> pd.Series:
 # ---------------------------------------------------------------------------
 from datetime import datetime, timezone
 
-def update_signal_lifecycle(ticker: str, strength_score: float, active_signals: list, current_price: float) -> dict:
+def _generate_trade_plan(situation: str, entry_price: float) -> dict:
+    """Generate the heuristic Trade Plan based on signal situation."""
+    if entry_price <= 0:
+        return {}
+
+    plan = {
+        "direction": "LONG",
+        "entry_price": entry_price,
+        "stop_loss": 0.0,
+        "take_profit": 0.0,
+        "sl_pct": 0.0,
+        "tp_pct": 0.0,
+        "risk_reward": ""
+    }
+
+    if situation == "oversold":
+        plan["sl_pct"] = -4.0
+        plan["tp_pct"] = 8.0
+        plan["risk_reward"] = "1:2"
+    elif situation in ("breakout_strong", "breakout_forming"):
+        plan["sl_pct"] = -3.0
+        plan["tp_pct"] = 9.0  # Optional: +8 or +9. Using 9 to make it 1:3 for strong breakouts as user noted. Or 8. Let's do 9.
+        plan["risk_reward"] = "1:3"
+    elif situation in ("momentum_up", "strong_trend"):
+        plan["sl_pct"] = -5.0
+        plan["tp_pct"] = 10.0
+        plan["risk_reward"] = "1:2"
+    elif situation in ("breakdown", "momentum_down", "overbought"):
+        # Bearish signals (SHORT)
+        plan["direction"] = "SHORT"
+        plan["sl_pct"] = 3.0
+        plan["tp_pct"] = -6.0
+        plan["risk_reward"] = "1:2"
+    else:
+        # Default weak/no signal plan, shouldn't really be used but just in case
+        plan["sl_pct"] = -5.0
+        plan["tp_pct"] = 10.0
+        plan["risk_reward"] = "1:2"
+
+    # Calculate absolute price levels
+    sl_mult = 1.0 + (plan["sl_pct"] / 100.0)
+    tp_mult = 1.0 + (plan["tp_pct"] / 100.0)
+
+    plan["stop_loss"] = round(entry_price * sl_mult, 2)
+    plan["take_profit"] = round(entry_price * tp_mult, 2)
+
+    return plan
+
+def _update_trade_simulation(state: dict, current_price: float, now: float):
+    """Monitors the trade simulation state in real time."""
+    tracking = state.get("trade_tracking")
+    if not tracking:
+        return
+        
+    status = tracking.get("trade_status")
+    if status != "open":
+        return # already closed or pending (we only use pending -> open explicitly)
+        
+    plan = state.get("trade_plan", {})
+    if not plan:
+        return
+        
+    entry = plan.get("entry_price", 0.0)
+    tp = plan.get("take_profit", 0.0)
+    sl = plan.get("stop_loss", 0.0)
+    direction = plan.get("direction", "LONG")
+    opened_at = tracking.get("trade_opened_at", now)
+    
+    # Update duration
+    duration = int(now - opened_at)
+    tracking["trade_duration_seconds"] = duration
+    
+    # Calculate floating PnL
+    if entry > 0:
+        if direction == "LONG":
+            pct = ((current_price - entry) / entry) * 100.0
+            abs_pnl = current_price - entry
+        else:
+            pct = ((entry - current_price) / entry) * 100.0
+            abs_pnl = entry - current_price
+            
+        tracking["pnl_percentage"] = round(pct, 2)
+        tracking["pnl_absolute"] = round(abs_pnl, 2)
+        
+    # Check Exits
+    # 1. Target or Stop
+    if direction == "LONG":
+        if current_price >= tp and tp > 0:
+            tracking["trade_status"] = "closed_win"
+            tracking["trade_result"] = "win"
+            tracking["trade_closed_at"] = now
+            tracking["exit_reason"] = "target hit"
+        elif current_price <= sl and sl > 0:
+            tracking["trade_status"] = "closed_loss"
+            tracking["trade_result"] = "loss"
+            tracking["trade_closed_at"] = now
+            tracking["exit_reason"] = "stop loss hit"
+    else: # SHORT
+        if current_price <= tp and tp > 0:
+            tracking["trade_status"] = "closed_win"
+            tracking["trade_result"] = "win"
+            tracking["trade_closed_at"] = now
+            tracking["exit_reason"] = "target hit"
+        elif current_price >= sl and sl > 0:
+            tracking["trade_status"] = "closed_loss"
+            tracking["trade_result"] = "loss"
+            tracking["trade_closed_at"] = now
+            tracking["exit_reason"] = "stop loss hit"
+            
+    # 2. Time Expiration (e.g. > 60 mins = 3600 seconds)
+    if tracking["trade_status"] == "open" and duration > 3600:
+        tracking["trade_status"] = "closed_expired"
+        tracking["trade_result"] = "expired"
+        tracking["trade_closed_at"] = now
+    state["trade_tracking"] = tracking
+
+def update_signal_lifecycle(ticker: str, strength_score: float, active_signals: list, current_price: float, ticker_entry: dict) -> dict:
     key = f"lifecycle:{ticker}"
     cached = redis_get(key)
     now = time.time()
     
-    # Valid signal requires score >= 40 AND actual active signals
     is_valid_signal = strength_score >= 40.0 and len(active_signals) > 0
+    situation = _detect_situation(ticker_entry)
     
     if not cached:
         if is_valid_signal:
-            # NEW SIGNAL DETECTED
+            trade_plan = _generate_trade_plan(situation, current_price)
             state = {
                 "signal_detected_at": now,
                 "signal_last_validated_at": now,
@@ -168,6 +284,17 @@ def update_signal_lifecycle(ticker: str, strength_score: float, active_signals: 
                 "entry_window_status": "open",
                 "signal_expired": False,
                 "signal_invalid_reason": "",
+                "trade_plan": trade_plan,
+                "trade_tracking": {
+                    "trade_status": "open",
+                    "trade_opened_at": now,
+                    "trade_closed_at": None,
+                    "trade_result": "",
+                    "pnl_percentage": 0.0,
+                    "pnl_absolute": 0.0,
+                    "trade_duration_seconds": 0,
+                    "exit_reason": ""
+                }
             }
             redis_set(key, state, 7200) # 2 hours TTL
         else:
@@ -224,6 +351,13 @@ def update_signal_lifecycle(ticker: str, strength_score: float, active_signals: 
                 state["signal_last_validated_at"] = now
                 # Update redis one last time with 2 hours TTL so it expires naturally
                 redis_set(key, state, 7200)
+
+        # Run tracking update regardless of valid signal (to close out if needed)
+        _update_trade_simulation(state, current_price, now)
+        # We need to save the state again if tracking modified it. We do this for active signals above,
+        # but if expired, we should save tracking changes. Let's do a uniform save:
+        if not is_valid_signal:
+            redis_set(key, state, 7200)
     
     # Format output fields
     age_seconds = int(now - state.get("signal_detected_at", now))
@@ -241,6 +375,8 @@ def update_signal_lifecycle(ticker: str, strength_score: float, active_signals: 
         "entry_window_status": state.get("entry_window_status", ""),
         "signal_expired": state.get("signal_expired", False),
         "signal_invalid_reason": state.get("signal_invalid_reason", ""),
+        "trade_plan": state.get("trade_plan", {}),
+        "trade_tracking": state.get("trade_tracking", {})
     }
 
 # ---------------------------------------------------------------------------
@@ -519,7 +655,7 @@ def run_scan(market: str = DEFAULT_MARKET) -> tuple[list, list]:
         }
         
         # --- Signal Lifecycle Engine ---
-        lifecycle_fields = update_signal_lifecycle(ticker, strength_score, active_signals, latest_close)
+        lifecycle_fields = update_signal_lifecycle(ticker, strength_score, active_signals, latest_close, ticker_entry)
         ticker_entry.update(lifecycle_fields)
         # --- Human Layer: translate to plain language ---
         human_fields = translate_ticker(ticker_entry, opt_cache)

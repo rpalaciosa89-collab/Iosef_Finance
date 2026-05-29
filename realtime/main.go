@@ -94,6 +94,18 @@ type TickerData struct {
 	Explanation      string `json:"explanation"`
 	ConfidenceText   string `json:"confidence_text"`
 	DecisionClarity  string `json:"decision_clarity"`
+	
+	// Lifecycle Engine & Trade Tracking
+	SignalStatus           string      `json:"signal_status"`
+	SignalDetectedAt       string      `json:"signal_detected_at"`
+	SignalLastValidatedAt  string      `json:"signal_last_validated_at"`
+	SignalAgeSeconds       int         `json:"signal_age_seconds"`
+	EntryWindowStatus      string      `json:"entry_window_status"`
+	SignalExpired          bool        `json:"signal_expired"`
+	SignalInvalidReason    string      `json:"signal_invalid_reason"`
+	SignalRevalidationNote string      `json:"signal_revalidation_note"`
+	TradePlan              interface{} `json:"trade_plan"`
+	TradeTracking          interface{} `json:"trade_tracking"`
 }
 
 type ScanResponse struct {
