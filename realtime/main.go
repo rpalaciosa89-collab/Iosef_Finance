@@ -68,19 +68,21 @@ func initRedis() {
 // ---------------------------------------------------------------------------
 
 type TickerData struct {
-	Ticker            string  `json:"ticker"`
-	Price             float64 `json:"price"`
-	ChangePct         float64 `json:"change_pct"`
-	RSI               float64 `json:"rsi"`
-	SMA20             float64 `json:"sma20"`
-	SMA50             float64 `json:"sma50"`
-	SMA200            float64 `json:"sma200"`
-	Momentum1M        float64 `json:"momentum_1m"`
-	RelativeVolume    float64 `json:"relative_volume"`
-	CompositeScore    int     `json:"composite_score"`
-	MAPreakoutSignal  bool    `json:"ma_breakout_signal"`
-	Sector            *string `json:"sector"`
-	Industry          *string `json:"industry"`
+	Ticker               string  `json:"ticker"`
+	Price                float64 `json:"price"`
+	ChangePct            float64 `json:"change_pct"`
+	RSI                  float64 `json:"rsi"`
+	SMA20                float64 `json:"sma20"`
+	SMA50                float64 `json:"sma50"`
+	SMA200               float64 `json:"sma200"`
+	Momentum1M           float64 `json:"momentum_1m"`
+	RelativeVolume       float64 `json:"relative_volume"`
+	CompositeScore       int     `json:"composite_score"`
+	MAPreakoutSignal     bool    `json:"ma_breakout_signal"`
+	SignalStrengthScore  float64 `json:"signal_strength_score"`
+	SignalStrengthSource string  `json:"signal_strength_source"`
+	Sector               *string `json:"sector"`
+	Industry             *string `json:"industry"`
 }
 
 type ScanResponse struct {

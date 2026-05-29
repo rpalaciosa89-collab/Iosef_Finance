@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 from typing import Optional
+from scoring import get_confidence_label, compute_signal_score
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Helpers
@@ -24,16 +25,6 @@ def _calc_rsi(series: pd.Series, period: int = 14) -> pd.Series:
     loss = (-delta.clip(upper=0)).ewm(alpha=1 / period, adjust=False).mean()
     rs = gain / loss
     return 100 - (100 / (1 + rs))
-
-
-def _confidence_label(total: int, win_rate_5d: float) -> str:
-    if total < 15:
-        return "insufficient_sample"
-    if total >= 100 and win_rate_5d >= 0.60:
-        return "high"
-    if total >= 40:
-        return "medium"
-    return "low"
 
 
 def _deduplicate_mask(mask: pd.DataFrame, window: int = 3) -> pd.DataFrame:
@@ -148,7 +139,9 @@ def _compute_metrics(
         return round(float(np.min(arr)), 3)
 
     wr5 = wr(r5)
-    conf = _confidence_label(total, wr5 if wr5 else 0.0)
+    exp5 = expectancy(r5)
+    pf5 = profit_factor(r5)
+    conf = get_confidence_label(total, wr5 if wr5 else 0.0, pf5, exp5)
 
     return {
         "total_signals":    total,
@@ -161,8 +154,8 @@ def _compute_metrics(
         "avg_return_10d":   avg(r10),
         "avg_return_20d":   avg(r20),
         "median_return_5d": med(r5),
-        "expectancy_5d":    expectancy(r5),
-        "profit_factor":    profit_factor(r5),
+        "expectancy_5d":    exp5,
+        "profit_factor":    pf5,
         "max_drawdown_5d":  max_dd(r5),
         "confidence":       conf,
         "context": {
@@ -334,25 +327,15 @@ def _generate_ranking(individual: dict, combined: dict) -> dict:
     scores = {}
     for name, entry in all_signals.items():
         s = entry["stats"]
-        wr  = s.get("win_rate_5d")  or 0.0
-        exp = s.get("expectancy_5d") or 0.0
-        pf  = s.get("profit_factor") or 0.0
-        conf = s.get("confidence", "low")
-
-        score = (
-            wr  * 40 +
-            min(max(exp, 0) / 5.0, 1.0) * 30 +
-            min(max(pf,  0) / 3.0, 1.0) * 20 +
-            {"high": 10, "medium": 5, "low": 2}.get(conf, 0)
-        )
+        score = compute_signal_score(s)
 
         scores[name] = {
-            "score":          round(score, 2),
+            "score":          score,
             "kind":           entry["kind"],
-            "win_rate_5d":    wr,
-            "expectancy_5d":  exp,
-            "profit_factor":  pf,
-            "confidence":     conf,
+            "win_rate_5d":    s.get("win_rate_5d") or 0.0,
+            "expectancy_5d":  s.get("expectancy_5d") or 0.0,
+            "profit_factor":  s.get("profit_factor") or 0.0,
+            "confidence":     s.get("confidence", "low"),
             "total_signals":  s.get("total_signals", 0),
         }
 

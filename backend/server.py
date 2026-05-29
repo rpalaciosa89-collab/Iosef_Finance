@@ -23,6 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from signal_evaluation import evaluate_signals
 from strategy_optimizer import run_strategy_optimization
+from scoring import compute_signal_score
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
@@ -233,6 +234,29 @@ def run_scan(market: str = DEFAULT_MARKET) -> tuple[list, list]:
     results = []
     alerts = []
 
+    # --- Pre-calculate Market Breadth ---
+    # We do this before iterating over tickers to have context ready.
+    sma50_all = closes.rolling(50).mean()
+    latest_closes = closes.iloc[-1]
+    latest_sma50 = sma50_all.iloc[-1]
+    stocks_above_sma50 = (latest_closes > latest_sma50).sum()
+    total_valid = latest_closes.notna().sum()
+    market_breadth = stocks_above_sma50 / total_valid if total_valid > 0 else 0.0
+
+    if market_breadth > 0.6:
+        current_context = "bullish"
+    elif market_breadth < 0.4:
+        current_context = "bearish"
+    else:
+        current_context = "neutral"
+
+    if current_context == "bearish":
+        alerts.append({"ticker": "MARKET", "type": "market_weakness", "message": f"Market Weakness: breadth at {market_breadth:.0%}", "strength": "high", "color": "yellow"})
+    elif current_context == "bullish":
+        alerts.append({"ticker": "MARKET", "type": "market_strength", "message": f"Market Strength: breadth at {market_breadth:.0%}", "strength": "high", "color": "green"})
+
+    opt_cache = redis_get(f"meta:strategy_optimization:{market}")
+
     for ticker in tickers:
         if ticker not in closes.columns:
             continue
@@ -277,6 +301,98 @@ def run_scan(market: str = DEFAULT_MARKET) -> tuple[list, list]:
             (float(close_series.iloc[-2]) < prev200 and latest_close >= sma200)
         )
 
+        # --- Real-Time Prioritization Scoring Engine ---
+        active_signals = []
+        is_breakout_up = (prev_close < prev50) and (latest_close >= sma50)
+        is_breakdown_down = (prev_close > prev50) and (latest_close < sma50)
+        is_oversold = rsi < 30
+        is_overbought = rsi > 70
+        is_high_volume = rel_volume > 2.0
+        is_momentum_shift_up = pct_change > 3.0
+        is_momentum_shift_down = pct_change < -3.0
+        is_composite_score_high = score >= 6
+        
+        if is_breakout_up:
+            active_signals.append("breakout_up")
+        if is_breakdown_down:
+            active_signals.append("breakdown_down")
+        if is_oversold:
+            active_signals.append("oversold")
+        if is_overbought:
+            active_signals.append("overbought")
+        if is_high_volume:
+            active_signals.append("high_volume")
+        if is_momentum_shift_up:
+            active_signals.append("momentum_shift_up")
+        if is_momentum_shift_down:
+            active_signals.append("momentum_shift_down")
+        if ma_breakout_signal:
+            active_signals.append("ma_breakout_signal")
+        if is_composite_score_high:
+            active_signals.append("composite_score_high")
+            
+        if is_breakout_up and rel_volume > 1.5:
+            active_signals.append("breakout_up__high_volume")
+        if is_breakout_up and is_composite_score_high:
+            active_signals.append("breakout_up__composite_gte6")
+        if is_breakout_up and rsi < 70:
+            active_signals.append("breakout_up__rsi_lt70")
+        if is_oversold and rel_volume > 1.5:
+            active_signals.append("oversold__high_volume")
+
+        strength_score = 0.0
+        strength_source = "fallback"
+        best_adj = 0.0
+        
+        if opt_cache and isinstance(opt_cache, dict):
+            ind_stats = opt_cache.get("individual_signals", {})
+            comb_stats = opt_cache.get("combined_signals", {})
+            max_score = 0.0
+            found_any = False
+            
+            for sig in active_signals:
+                if sig == "high_volume":
+                    continue
+                
+                stats = comb_stats.get(sig) if "__" in sig else ind_stats.get(sig)
+                if stats and isinstance(stats, dict):
+                    sig_score = compute_signal_score(stats)
+                    
+                    # Context adjustment
+                    base_wr = stats.get("win_rate_5d") or 0.0
+                    ctx_stats = stats.get("context", {}).get(current_context, {})
+                    ctx_wr = ctx_stats.get("win_rate_5d") if ctx_stats.get("win_rate_5d") is not None else base_wr
+                    
+                    adj = 0.0
+                    if ctx_wr > base_wr + 0.05:
+                        sig_score *= 1.15
+                        adj = 0.15
+                    elif ctx_wr < base_wr - 0.05:
+                        sig_score *= 0.85
+                        adj = -0.15
+                        
+                    sig_score = min(100.0, max(0.0, sig_score))
+
+                    if sig_score > max_score:
+                        max_score = sig_score
+                        best_adj = adj
+                        found_any = True
+            if found_any:
+                strength_score = round(max_score, 1)
+                strength_source = "optimized"
+
+        if strength_source == "fallback":
+            fallback_val = (score * 5.0)
+            if ma_breakout_signal:
+                fallback_val += 30.0
+            if rel_volume > 1.5:
+                fallback_val += 15.0
+            if rsi < 30:
+                fallback_val += 15.0
+            elif rsi > 70:
+                fallback_val -= 15.0
+            strength_score = round(max(0.0, min(100.0, float(fallback_val))), 1)
+
         # --- Condition 3: sector/industry from in-memory cache, never blocks scan ---
         meta     = SECTOR_META_CACHE.get(ticker, {})
         sector   = meta.get("sector")   or None   # None → frontend shows "–"
@@ -294,6 +410,10 @@ def run_scan(market: str = DEFAULT_MARKET) -> tuple[list, list]:
             "relative_volume":   round(rel_volume, 2),
             "composite_score":   score,
             "ma_breakout_signal": ma_breakout_signal,
+            "signal_strength_score": strength_score,
+            "signal_strength_source": strength_source,
+            "signal_context_adjustment": best_adj,
+            "market_context_used": current_context,
             "sector":            sector,
             "industry":          industry,
         })
@@ -322,15 +442,7 @@ def run_scan(market: str = DEFAULT_MARKET) -> tuple[list, list]:
         elif pct_change < -3.0:
             alerts.append({"ticker": ticker, "type": "momentum_shift", "message": f"Strong move down ({pct_change:.1f}%)", "strength": "high", "color": "red"})
 
-    # 5. Market Context
-    if len(results) > 0:
-        stocks_above_sma50 = sum(1 for r in results if r["price"] > r["sma50"])
-        breadth = stocks_above_sma50 / len(results)
-        if breadth < 0.4:
-            alerts.append({"ticker": "MARKET", "type": "market_weakness", "message": f"Market Weakness: breadth at {breadth:.0%}", "strength": "high", "color": "yellow"})
-        elif breadth > 0.7:
-            alerts.append({"ticker": "MARKET", "type": "market_strength", "message": f"Market Strength: breadth at {breadth:.0%}", "strength": "high", "color": "green"})
-
+    # 5. Market Context was pre-calculated at the beginning of the function
     return results, alerts
 
 # ---------------------------------------------------------------------------
@@ -351,10 +463,59 @@ async def background_scanner():
                     snap_file = os.path.join(SNAPSHOT_DIR, f"latest_{market}.json")
                     with open(snap_file, "w") as f:
                         json.dump(payload, f)
+                    # Also write Parquet cache for faster cold-start reload
+                    _write_parquet_cache(market, payload)
                     print(f"[scanner] ✓ {market}: {len(results)} tickers scanned")
             except Exception as e:
                 print(f"[scanner] Error scanning {market}: {e}")
         await asyncio.sleep(60)
+
+# ---------------------------------------------------------------------------
+# Parquet-based disk cache for yfinance data (faster than JSON fallback)
+# ---------------------------------------------------------------------------
+PARQUET_CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "cache", "parquet")
+os.makedirs(PARQUET_CACHE_DIR, exist_ok=True)
+PARQUET_CACHE_TTL = 60  # seconds, same as scan interval
+
+def _parquet_cache_path(market: str) -> str:
+    return os.path.join(PARQUET_CACHE_DIR, f"scan_{market}.parquet")
+
+def _write_parquet_cache(market: str, payload: dict) -> None:
+    """Write scan results as Parquet + metadata JSON for fast reload."""
+    try:
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+        data = payload.get("data", [])
+        if data:
+            table = pa.Table.from_pydict({k: [d[k] for d in data] for k in data[0].keys()})
+            pq.write_table(table, _parquet_cache_path(market))
+        meta_path = _parquet_cache_path(market).replace(".parquet", "_meta.json")
+        with open(meta_path, "w") as f:
+            json.dump({"timestamp": payload["timestamp"], "market": payload["market"], "alerts": payload.get("alerts", [])}, f)
+    except ImportError:
+        pass  # pyarrow not installed, skip parquet
+    except Exception as e:
+        print(f"[parquet] Write error for {market}: {e}")
+
+def _read_parquet_cache(market: str) -> Optional[dict]:
+    """Restore scan results from Parquet cache (much faster than JSON for large datasets)."""
+    try:
+        import pyarrow.parquet as pq
+        parq_path = _parquet_cache_path(market)
+        meta_path = parq_path.replace(".parquet", "_meta.json")
+        if os.path.exists(parq_path) and os.path.exists(meta_path):
+            cache_mtime = os.path.getmtime(parq_path)
+            if time.time() - cache_mtime < PARQUET_CACHE_TTL:
+                table = pq.read_table(parq_path)
+                data = table.to_pylist()
+                with open(meta_path) as f:
+                    meta = json.load(f)
+                return {**meta, "data": data}
+    except ImportError:
+        pass
+    except Exception as e:
+        print(f"[parquet] Read error for {market}: {e}")
+    return None
 
 # ---------------------------------------------------------------------------
 # App
@@ -402,7 +563,12 @@ def get_scan(market: str = DEFAULT_MARKET):
     if cached:
         return cached
 
-    # Fallback: snapshot file
+    # Fallback: Parquet cache (fastest disk read)
+    parquet_data = _read_parquet_cache(market)
+    if parquet_data:
+        return parquet_data
+
+    # Fallback: snapshot JSON file
     snap_file = os.path.join(SNAPSHOT_DIR, f"latest_{market}.json")
     if os.path.exists(snap_file):
         with open(snap_file) as f:
@@ -411,12 +577,12 @@ def get_scan(market: str = DEFAULT_MARKET):
 
 @app.get("/api/top")
 def get_top(market: str = DEFAULT_MARKET):
-    """Top 20 tickers by composite_score."""
+    """Top 20 tickers by signal_strength_score."""
     scan  = get_scan(market)
     data  = scan.get("data", [])
     if not data:
         return {"timestamp": None, "market": market, "data": []}
-    top20 = sorted(data, key=lambda x: x["composite_score"], reverse=True)[:20]
+    top20 = sorted(data, key=lambda x: (x.get("signal_strength_score", 0.0), x.get("composite_score", 0)), reverse=True)[:20]
     return {"timestamp": scan.get("timestamp"), "market": market, "data": top20}
 
 @app.get("/api/ticker/{ticker}")

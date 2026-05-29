@@ -775,6 +775,51 @@
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: var(--text-tertiary); border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: var(--text-secondary); }
+
+        /* ================================================================
+           PRIORITY BADGES
+           ================================================================ */
+        .priority-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 10px;
+            border-radius: 6px;
+            font-weight: 700;
+            font-size: 0.82rem;
+            letter-spacing: 0.03em;
+            white-space: nowrap;
+        }
+        .priority-high {
+            background: rgba(0, 230, 118, 0.15);
+            color: #00e676;
+            box-shadow: 0 0 8px rgba(0, 230, 118, 0.25);
+        }
+        .priority-medium {
+            background: rgba(255, 214, 0, 0.12);
+            color: #ffd600;
+        }
+        .priority-low {
+            background: rgba(255, 82, 82, 0.12);
+            color: #ff5252;
+        }
+        .source-tag {
+            font-size: 0.6rem;
+            padding: 1px 5px;
+            border-radius: 3px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            vertical-align: middle;
+        }
+        .source-optimized {
+            background: rgba(0, 176, 255, 0.15);
+            color: #00b0ff;
+        }
+        .source-fallback {
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--text-tertiary);
+        }
     </style>
 </head>
 <body>
@@ -874,6 +919,7 @@
                             <th data-col="sma50">SMA50</th>
                             <th data-col="sma200">SMA200</th>
                             <th data-col="momentum_1m">Mom 1M</th>
+                            <th data-col="signal_strength_score">Prioridad</th>
                             <th data-col="composite_score">Score</th>
                             <th data-col="ma_breakout_signal">Signal</th>
                         </tr>
@@ -944,7 +990,7 @@
 
     let rawData = [];
     let filteredData = [];
-    let sortCol = 'composite_score';
+    let sortCol = 'signal_strength_score';
     let sortAsc = false;
     let ws = null;
     let wsConnected = false;
@@ -1228,6 +1274,15 @@
             if (t.composite_score >= 6) scoreCls = 'score-bullish';
             else if (t.composite_score <= 2) scoreCls = 'score-bearish';
 
+            // Priority badge
+            const pScore = t.signal_strength_score != null ? t.signal_strength_score : 0;
+            let priCls = 'priority-low';
+            let priIcon = '🔴';
+            if (pScore >= 75) { priCls = 'priority-high'; priIcon = '🔥'; }
+            else if (pScore >= 40) { priCls = 'priority-medium'; priIcon = '🟡'; }
+            const srcCls = t.signal_strength_source === 'optimized' ? 'source-optimized' : 'source-fallback';
+            const srcLabel = t.signal_strength_source === 'optimized' ? 'OPT' : 'FB';
+
             // Breakout signal
             const signal = t.ma_breakout_signal ? '<span class="breakout-badge">BRK</span>' : '';
 
@@ -1249,6 +1304,7 @@
                 <td>${t.sma50.toFixed(2)}</td>
                 <td>${t.sma200.toFixed(2)}</td>
                 <td class="${momCls}">${momSign}${t.momentum_1m.toFixed(2)}%</td>
+                <td><span class="priority-badge ${priCls}">${priIcon} ${pScore.toFixed(0)} <span class="source-tag ${srcCls}">${srcLabel}</span></span></td>
                 <td><span class="score-badge ${scoreCls}">${t.composite_score}</span></td>
                 <td>${signal}</td>
             </tr>`;
@@ -1283,13 +1339,17 @@
         ).join('');
 
         // Breakouts
-        const brk = valid.filter(t => t.ma_breakout_signal).sort((a, b) => b.composite_score - a.composite_score).slice(0, 8);
+        const brk = valid.filter(t => t.ma_breakout_signal).sort((a, b) => (b.signal_strength_score||0) - (a.signal_strength_score||0)).slice(0, 8);
         document.getElementById('breakouts-list').innerHTML = brk.length > 0
-            ? brk.map(t => `<li class="side-item" onclick="openModal('${t.ticker}')">
-                <span class="sym">${t.ticker}</span>
-                <span class="price-col">Score: ${t.composite_score}</span>
-                <span class="chg-col" style="color:var(--blue)">⚡ BRK</span>
-            </li>`).join('')
+            ? brk.map(t => {
+                const ps = t.signal_strength_score != null ? t.signal_strength_score : 0;
+                const pIcon = ps >= 75 ? '🔥' : ps >= 40 ? '🟡' : '🔴';
+                return `<li class="side-item" onclick="openModal('${t.ticker}')">
+                    <span class="sym">${t.ticker}</span>
+                    <span class="price-col">${pIcon} ${ps.toFixed(0)}</span>
+                    <span class="chg-col" style="color:var(--blue)">⚡ BRK</span>
+                </li>`;
+            }).join('')
             : '<li class="side-item"><span style="color:var(--text-tertiary)">No breakouts detected</span></li>';
     }
 
@@ -1385,7 +1445,19 @@
                 html += detailCard('Change %', `<span class="${chgCls}">${chgSign}${scanItem.change_pct.toFixed(2)}%</span>`);
                 html += detailCard('RSI', `<span class="${rsiCls}">${scanItem.rsi.toFixed(2)}</span>`);
                 html += detailCard('Relative Vol', `${scanItem.relative_volume.toFixed(2)}x`);
-                html += detailCard('Score', `<span class="score-badge ${sCls}">${scanItem.composite_score}</span>`);
+                html += detailCard('Composite Score', `<span class="score-badge ${sCls}">${scanItem.composite_score}</span>`);
+
+                // Priority Score
+                const pSc = scanItem.signal_strength_score != null ? scanItem.signal_strength_score : 0;
+                let pCls = 'priority-low';
+                let pIcn = '🔴';
+                if (pSc >= 75) { pCls = 'priority-high'; pIcn = '🔥'; }
+                else if (pSc >= 40) { pCls = 'priority-medium'; pIcn = '🟡'; }
+                const pSrcCls = scanItem.signal_strength_source === 'optimized' ? 'source-optimized' : 'source-fallback';
+                const pSrcLbl = scanItem.signal_strength_source === 'optimized' ? 'Optimized' : 'Fallback';
+                html += detailCard('Prioridad', `<span class="priority-badge ${pCls}">${pIcn} ${pSc.toFixed(1)}</span>`);
+                html += detailCard('Score Source', `<span class="source-tag ${pSrcCls}" style="font-size:0.75rem;padding:2px 8px">${pSrcLbl}</span>`);
+
                 html += detailCard('Breakout', breakoutHtml);
                 html += detailCard('SMA20', `$${scanItem.sma20.toFixed(2)}`);
                 html += detailCard('SMA50', `$${scanItem.sma50.toFixed(2)}`);

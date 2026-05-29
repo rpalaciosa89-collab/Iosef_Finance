@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -21,6 +21,11 @@ class Settings(BaseSettings):
     # Secret keys and Auth
     SECRET_KEY: str = "change_me_to_a_secure_random_key_in_production"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8  # 8 days
+
+    # DeepSeek / LLM configuration
+    DEEPSEEK_API_URL: str = "https://api.deepseek.example"  # override in .env
+    DEEPSEEK_API_KEY: Optional[str] = None
+    DEEPSEEK_MODEL: str = "deepseek-v4"
     
     model_config = SettingsConfigDict(
         env_file=".env",
