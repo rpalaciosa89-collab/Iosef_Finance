@@ -308,6 +308,38 @@ def _decision_clarity(score: float, ctx_adj: float, situation: str, source: str)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Signal Revalidation Note — Lifecycle-aware human message
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _revalidation_note(signal_status: str, entry_window_status: str, signal_expired: bool) -> str:
+    """Generate a short, friendly revalidation message based on lifecycle state."""
+    if signal_expired or signal_status == "expired":
+        return "Ya no es una entrada eficiente en este momento."
+
+    if signal_status == "new":
+        if entry_window_status == "open":
+            return "Señal recién detectada. Ventana de entrada abierta."
+        return "Señal nueva. Monitorear de cerca."
+
+    if signal_status == "active":
+        if entry_window_status == "open":
+            return "Sigue vigente."
+        if entry_window_status == "narrowing":
+            return "Todavía válida, pero con menor claridad."
+        if entry_window_status == "late":
+            return "La oportunidad se está debilitando. Entrada menos eficiente."
+        return "Señal activa."
+
+    if signal_status == "weakening":
+        if entry_window_status in ("late", "closed"):
+            return "La oportunidad se está debilitando. Ya no es un punto de entrada eficiente."
+        return "La señal está perdiendo fuerza. Vigilar antes de actuar."
+
+    # No lifecycle state yet (no active signal for this ticker)
+    return ""
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Main entry point
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -316,7 +348,9 @@ def translate_ticker(ticker_data: dict, opt_cache: Optional[dict]) -> dict:
     Receives a fully-computed ticker dict from run_scan() and the
     optional strategy optimization cache from Redis.
 
-    Returns a dict with 8 human-readable fields to be merged into the ticker.
+    Returns a dict with human-readable fields to be merged into the ticker.
+    Note: lifecycle fields (signal_status, entry_window_status, etc.) are
+    already set by the Signal Lifecycle Engine before this function is called.
     """
     score     = ticker_data.get("signal_strength_score", 0.0) or 0.0
     ctx_adj   = ticker_data.get("signal_context_adjustment", 0.0) or 0.0
@@ -355,6 +389,12 @@ def translate_ticker(ticker_data: dict, opt_cache: Optional[dict]) -> dict:
     conf_text   = _confidence_text(source, score, signal_stats)
     clarity     = _decision_clarity(score, ctx_adj, situation, source)
 
+    # Lifecycle revalidation note (reads fields injected by server.py lifecycle engine)
+    sig_status   = ticker_data.get("signal_status", "")
+    entry_window = ticker_data.get("entry_window_status", "")
+    sig_expired  = ticker_data.get("signal_expired", False)
+    reval_note   = _revalidation_note(sig_status, entry_window, sig_expired)
+
     return {
         "human_signal":    f"{icon} {label}",
         "situation":       situation,
@@ -364,4 +404,6 @@ def translate_ticker(ticker_data: dict, opt_cache: Optional[dict]) -> dict:
         "explanation":     explanation,
         "confidence_text": conf_text,
         "decision_clarity": clarity,
+        "signal_revalidation_note": reval_note,
     }
+

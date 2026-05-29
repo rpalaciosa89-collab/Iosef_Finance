@@ -525,6 +525,102 @@
             position: relative;
         }
 
+        /* ── Signal Lifecycle: table pill (simple mode row) ── */
+        .lifecycle-pills {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin-top: 6px;
+        }
+        .lc-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 10px;
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 20px;
+            white-space: nowrap;
+            font-family: var(--font-sans);
+        }
+        .lc-pill.status-new      { background: rgba(59,130,246,.18); color: #60a5fa; }
+        .lc-pill.status-active   { background: rgba(34,197,94,.18);  color: #4ade80; }
+        .lc-pill.status-weakening{ background: rgba(234,179,8,.18);  color: #facc15; }
+        .lc-pill.status-expired  { background: rgba(239,68,68,.15);  color: #f87171; }
+        .lc-pill.status-none     { background: var(--bg-2);          color: var(--text-tertiary); }
+        .lc-pill.entry-open      { background: rgba(34,197,94,.15);  color: #4ade80; }
+        .lc-pill.entry-narrowing { background: rgba(234,179,8,.15);  color: #facc15; }
+        .lc-pill.entry-late      { background: rgba(249,115,22,.18); color: #fb923c; }
+        .lc-pill.entry-closed    { background: rgba(239,68,68,.15);  color: #f87171; }
+
+        /* ── Signal Lifecycle: modal detail block ── */
+        .estado-senal {
+            background: var(--bg-1);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 14px 18px;
+            margin-bottom: 18px;
+        }
+        .estado-senal-title {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: var(--text-tertiary);
+            margin-bottom: 12px;
+        }
+        .estado-senal-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 10px 18px;
+        }
+        .estado-senal-item {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .estado-senal-label {
+            font-size: 9px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-tertiary);
+        }
+        .estado-senal-value {
+            font-size: 12px;
+            font-weight: 600;
+            font-family: var(--font-sans);
+            color: var(--text-primary);
+        }
+        .estado-senal-note {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid var(--border);
+            font-size: 12px;
+            color: var(--text-secondary);
+            line-height: 1.4;
+        }
+        .estado-senal-note.expired { color: #f87171; }
+        .estado-senal-note.weakening { color: #facc15; }
+        .estado-senal-note.active { color: #4ade80; }
+
+        /* Compact lifecycle bar for Simple Mode (inside human card) */
+        .lifecycle-bar-simple {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 6px;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid var(--border);
+        }
+        .lifecycle-bar-simple .lc-tag {
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+
+
+
         .detail-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
@@ -1191,6 +1287,7 @@
                             <!-- Simple mode cols -->
                             <th class="col-simple">Prioridad</th>
                             <th class="col-simple">Señal</th>
+                            <th class="col-simple">Estado</th>
                             <th class="col-simple">Acción</th>
                             <th class="col-simple">Horizonte</th>
                             <th class="col-simple">Riesgo</th>
@@ -1586,6 +1683,7 @@
                 <td class="col-pro">${signal}</td>
                 <td class="col-simple"><span class="priority-badge ${priCls}">${priSimpleLabel}</span></td>
                 <td class="col-simple">${humanSignalBadge(t)}</td>
+                <td class="col-simple">${buildLifecyclePills(t)}</td>
                 <td class="col-simple">${actionBadge(t.suggested_action)}</td>
                 <td class="col-simple" style="color:var(--text-secondary);font-size:0.78rem">${t.holding_period || '—'}</td>
                 <td class="col-simple">${riskBadge(t.risk_level)}</td>
@@ -1773,6 +1871,11 @@
                 </div>`;
             }
 
+            // Signal Lifecycle Block (both modes)
+            if (scanItem && scanItem.signal_status) {
+                html += buildEstadoSenal(scanItem);
+            }
+
             // Chart Section (Full Width)
             html += '<div class="chart-section" style="width:100%;">';
             html += `
@@ -1885,9 +1988,130 @@
         }
     }
 
+    // ── Signal Lifecycle Helpers ─────────────────────────────────────────────
+
+    function formatAge(isoStr) {
+        if (!isoStr) return null;
+        const secs = Math.floor((Date.now() - new Date(isoStr).getTime()) / 1000);
+        if (secs < 60) return `hace ${secs} s`;
+        const mins = Math.floor(secs / 60);
+        if (mins < 60) return `hace ${mins} min`;
+        const hrs = Math.floor(mins / 60);
+        return `hace ${hrs} h`;
+    }
+
+    function formatTime(isoStr) {
+        if (!isoStr) return '—';
+        const d = new Date(isoStr);
+        return d.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    }
+
+    function lcStatusMeta(status) {
+        const MAP = {
+            new:       { emoji: '🆕', label: 'Nueva',         cssStatus: 'status-new' },
+            active:    { emoji: '✅', label: 'Vigente',        cssStatus: 'status-active' },
+            weakening: { emoji: '⚠️', label: 'Debilitándose', cssStatus: 'status-weakening' },
+            expired:   { emoji: '❌', label: 'Expirada',       cssStatus: 'status-expired' },
+        };
+        return MAP[status] || { emoji: '—', label: '—', cssStatus: 'status-none' };
+    }
+
+    function lcEntryMeta(entry) {
+        const MAP = {
+            open:      { emoji: '🎯', label: 'Abierta',           cssEntry: 'entry-open' },
+            narrowing: { emoji: '⏳', label: 'Reduciendo calidad', cssEntry: 'entry-narrowing' },
+            late:      { emoji: '🔶', label: 'Entrada tardía',     cssEntry: 'entry-late' },
+            closed:    { emoji: '🚫', label: 'Cerrada',            cssEntry: 'entry-closed' },
+        };
+        return MAP[entry] || null;
+    }
+
+    /** Compact pills for table rows in Simple Mode */
+    function buildLifecyclePills(item) {
+        const status = item.signal_status || '';
+        const entry  = item.entry_window_status || '';
+        if (!status) return '';
+
+        const sm = lcStatusMeta(status);
+        const em = lcEntryMeta(entry);
+
+        const detectedAge = formatAge(item.signal_detected_at);
+        const validatedAge = formatAge(item.signal_last_validated_at);
+
+        let html = '<div class="lifecycle-pills">';
+        html += `<span class="lc-pill ${sm.cssStatus}">${sm.emoji} ${sm.label}</span>`;
+        if (em) html += `<span class="lc-pill ${em.cssEntry}">${em.emoji} Entrada: ${em.label}</span>`;
+        if (detectedAge) html += `<span class="lc-pill status-none">🕐 ${detectedAge}</span>`;
+        if (validatedAge) html += `<span class="lc-pill status-none">🔄 ${validatedAge}</span>`;
+        html += '</div>';
+        return html;
+    }
+
+    /** Detailed block for modal — appears below human card */
+    function buildEstadoSenal(item) {
+        const status = item.signal_status || '';
+        if (!status) return ''; // No lifecycle for this ticker
+
+        const sm = lcStatusMeta(status);
+        const em = lcEntryMeta(item.entry_window_status || '');
+        const detectedTime  = formatTime(item.signal_detected_at);
+        const validatedAge  = formatAge(item.signal_last_validated_at);
+        const age = item.signal_age_seconds > 0
+            ? (() => {
+                const s = item.signal_age_seconds;
+                if (s < 60) return `${s}s`;
+                const m = Math.floor(s/60); if (m < 60) return `${m} min`;
+                return `${Math.floor(m/60)} h ${m%60} min`;
+            })() : '—';
+
+        const reval = item.signal_revalidation_note || '';
+        const reason = item.signal_invalid_reason || '';
+        const noteText = item.signal_expired ? reason || reval : reval;
+        const noteClass = item.signal_expired ? 'expired'
+                        : status === 'weakening' ? 'weakening'
+                        : status === 'active' ? 'active' : '';
+
+        let html = `<div class="estado-senal">
+            <div class="estado-senal-title">⚡ Estado de la señal</div>
+            <div class="estado-senal-grid">
+                <div class="estado-senal-item">
+                    <span class="estado-senal-label">Estado</span>
+                    <span class="estado-senal-value">${sm.emoji} ${sm.label}</span>
+                </div>
+                <div class="estado-senal-item">
+                    <span class="estado-senal-label">Detectada a las</span>
+                    <span class="estado-senal-value">${detectedTime}</span>
+                </div>
+                <div class="estado-senal-item">
+                    <span class="estado-senal-label">Última validación</span>
+                    <span class="estado-senal-value">${validatedAge || '—'}</span>
+                </div>
+                <div class="estado-senal-item">
+                    <span class="estado-senal-label">Tiempo activa</span>
+                    <span class="estado-senal-value">${age}</span>
+                </div>`;
+
+        if (em) {
+            html += `<div class="estado-senal-item">
+                <span class="estado-senal-label">Ventana de entrada</span>
+                <span class="estado-senal-value">${em.emoji} ${em.label}</span>
+            </div>`;
+        }
+        html += `</div>`;
+
+        if (noteText) {
+            html += `<div class="estado-senal-note ${noteClass}">${noteText}</div>`;
+        }
+        html += `</div>`;
+        return html;
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+
     function detailCard(label, value) {
         return `<div class="detail-card"><div class="label">${label}</div><div class="value">${value}</div></div>`;
     }
+
 
     function generateTechReading(s) {
         const bullets = [];

@@ -145,6 +145,105 @@ def calculate_rsi(series: pd.Series, period: int = 14) -> pd.Series:
     return 100 - (100 / (1 + rs))
 
 # ---------------------------------------------------------------------------
+# Signal Lifecycle Engine
+# ---------------------------------------------------------------------------
+from datetime import datetime, timezone
+
+def update_signal_lifecycle(ticker: str, strength_score: float, active_signals: list, current_price: float) -> dict:
+    key = f"lifecycle:{ticker}"
+    cached = redis_get(key)
+    now = time.time()
+    
+    # Valid signal requires score >= 40 AND actual active signals
+    is_valid_signal = strength_score >= 40.0 and len(active_signals) > 0
+    
+    if not cached:
+        if is_valid_signal:
+            # NEW SIGNAL DETECTED
+            state = {
+                "signal_detected_at": now,
+                "signal_last_validated_at": now,
+                "signal_status": "new",
+                "detection_price": current_price,
+                "entry_window_status": "open",
+                "signal_expired": False,
+                "signal_invalid_reason": "",
+            }
+            redis_set(key, state, 7200) # 2 hours TTL
+        else:
+            # No valid signal, and no cache. Return empty defaults.
+            return {
+                "signal_detected_at": "",
+                "signal_last_validated_at": "",
+                "signal_status": "",
+                "signal_age_seconds": 0,
+                "entry_window_status": "",
+                "signal_expired": False,
+                "signal_invalid_reason": "",
+            }
+    else:
+        # EXISTING SIGNAL
+        state = cached
+        detected_at = state.get("signal_detected_at", now)
+        detection_price = state.get("detection_price", current_price)
+        age = now - detected_at
+        
+        if is_valid_signal:
+            # Signal continues to be valid
+            state["signal_last_validated_at"] = now
+            state["signal_expired"] = False
+            state["signal_invalid_reason"] = ""
+            
+            # Status based on age and score drops
+            if age < 300: # 5 minutes
+                state["signal_status"] = "new"
+            else:
+                if strength_score < 50:
+                    state["signal_status"] = "weakening"
+                else:
+                    state["signal_status"] = "active"
+                    
+            # Window status based on absolute percentage deviation
+            dev = abs(current_price - detection_price) / (detection_price if detection_price > 0 else 1) * 100
+            
+            if dev < 1.0:
+                state["entry_window_status"] = "open"
+            elif dev < 3.0:
+                state["entry_window_status"] = "narrowing"
+            else:
+                state["entry_window_status"] = "late"
+                
+            redis_set(key, state, 7200) # Keep refreshing TTL while active
+        else:
+            # SIGNAL NO LONGER VALID (EXPIRED)
+            if not state.get("signal_expired"):
+                state["signal_status"] = "expired"
+                state["entry_window_status"] = "closed"
+                state["signal_expired"] = True
+                state["signal_invalid_reason"] = "La condición técnica ya no sigue activa o perdió fuerza."
+                state["signal_last_validated_at"] = now
+                # Update redis one last time with 2 hours TTL so it expires naturally
+                redis_set(key, state, 7200)
+    
+    # Format output fields
+    age_seconds = int(now - state.get("signal_detected_at", now))
+    
+    # Format ISO times for frontend
+    def format_ts(ts):
+        if not ts: return ""
+        return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+
+    return {
+        "signal_detected_at": format_ts(state.get("signal_detected_at")),
+        "signal_last_validated_at": format_ts(state.get("signal_last_validated_at")),
+        "signal_status": state.get("signal_status", ""),
+        "signal_age_seconds": age_seconds,
+        "entry_window_status": state.get("entry_window_status", ""),
+        "signal_expired": state.get("signal_expired", False),
+        "signal_invalid_reason": state.get("signal_invalid_reason", ""),
+    }
+
+# ---------------------------------------------------------------------------
 # Sector / Industry background sync
 # Condition 1 & 2: runs outside scan loop, never blocks /api/scan
 # Condition 4: stored in Redis with 30-day TTL
@@ -418,6 +517,10 @@ def run_scan(market: str = DEFAULT_MARKET) -> tuple[list, list]:
             "sector":            sector,
             "industry":          industry,
         }
+        
+        # --- Signal Lifecycle Engine ---
+        lifecycle_fields = update_signal_lifecycle(ticker, strength_score, active_signals, latest_close)
+        ticker_entry.update(lifecycle_fields)
         # --- Human Layer: translate to plain language ---
         human_fields = translate_ticker(ticker_entry, opt_cache)
         ticker_entry.update(human_fields)
