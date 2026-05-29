@@ -24,6 +24,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from signal_evaluation import evaluate_signals
 from strategy_optimizer import run_strategy_optimization
 from scoring import compute_signal_score
+from human_layer import translate_ticker
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
@@ -398,7 +399,7 @@ def run_scan(market: str = DEFAULT_MARKET) -> tuple[list, list]:
         sector   = meta.get("sector")   or None   # None → frontend shows "–"
         industry = meta.get("industry") or None
 
-        results.append({
+        ticker_entry = {
             "ticker":            ticker,
             "price":             round(latest_close, 2),
             "change_pct":        round(pct_change, 2),
@@ -416,7 +417,11 @@ def run_scan(market: str = DEFAULT_MARKET) -> tuple[list, list]:
             "market_context_used": current_context,
             "sector":            sector,
             "industry":          industry,
-        })
+        }
+        # --- Human Layer: translate to plain language ---
+        human_fields = translate_ticker(ticker_entry, opt_cache)
+        ticker_entry.update(human_fields)
+        results.append(ticker_entry)
 
         # --- Alerts Generation ---
         # 1. Breakout

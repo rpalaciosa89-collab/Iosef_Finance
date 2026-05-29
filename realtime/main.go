@@ -68,21 +68,32 @@ func initRedis() {
 // ---------------------------------------------------------------------------
 
 type TickerData struct {
-	Ticker               string  `json:"ticker"`
-	Price                float64 `json:"price"`
-	ChangePct            float64 `json:"change_pct"`
-	RSI                  float64 `json:"rsi"`
-	SMA20                float64 `json:"sma20"`
-	SMA50                float64 `json:"sma50"`
-	SMA200               float64 `json:"sma200"`
-	Momentum1M           float64 `json:"momentum_1m"`
-	RelativeVolume       float64 `json:"relative_volume"`
-	CompositeScore       int     `json:"composite_score"`
-	MAPreakoutSignal     bool    `json:"ma_breakout_signal"`
-	SignalStrengthScore  float64 `json:"signal_strength_score"`
-	SignalStrengthSource string  `json:"signal_strength_source"`
-	Sector               *string `json:"sector"`
-	Industry             *string `json:"industry"`
+	Ticker               string   `json:"ticker"`
+	Price                float64  `json:"price"`
+	ChangePct            float64  `json:"change_pct"`
+	RSI                  float64  `json:"rsi"`
+	SMA20                float64  `json:"sma20"`
+	SMA50                float64  `json:"sma50"`
+	SMA200               float64  `json:"sma200"`
+	Momentum1M           float64  `json:"momentum_1m"`
+	RelativeVolume       float64  `json:"relative_volume"`
+	CompositeScore       int      `json:"composite_score"`
+	MAPreakoutSignal     bool     `json:"ma_breakout_signal"`
+	SignalStrengthScore  float64  `json:"signal_strength_score"`
+	SignalStrengthSource string   `json:"signal_strength_source"`
+	SignalContextAdj     float64  `json:"signal_context_adjustment"`
+	MarketContextUsed    string   `json:"market_context_used"`
+	Sector               *string  `json:"sector"`
+	Industry             *string  `json:"industry"`
+	// Human Layer fields
+	HumanSignal      string `json:"human_signal"`
+	Situation        string `json:"situation"`
+	SuggestedAction  string `json:"suggested_action"`
+	HoldingPeriod    string `json:"holding_period"`
+	RiskLevel        string `json:"risk_level"`
+	Explanation      string `json:"explanation"`
+	ConfidenceText   string `json:"confidence_text"`
+	DecisionClarity  string `json:"decision_clarity"`
 }
 
 type ScanResponse struct {

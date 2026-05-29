@@ -820,6 +820,186 @@
             background: rgba(255, 255, 255, 0.08);
             color: var(--text-tertiary);
         }
+
+        /* ================================================================
+           MODE TOGGLE — Simple / Pro
+           ================================================================ */
+        .mode-toggle {
+            display: flex;
+            align-items: center;
+            gap: 2px;
+            background: var(--bg-0);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 3px;
+        }
+        .mode-btn {
+            padding: 4px 12px;
+            border: none;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            background: transparent;
+            color: var(--text-tertiary);
+            transition: all 0.2s ease;
+            letter-spacing: 0.03em;
+        }
+        .mode-btn.active {
+            background: var(--bg-3);
+            color: var(--text-primary);
+            box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+        }
+        .mode-btn[data-mode="simple"].active {
+            background: linear-gradient(135deg, rgba(59,130,246,0.3), rgba(139,92,246,0.3));
+            color: #a5b4fc;
+        }
+
+        /* ================================================================
+           HUMAN LAYER — Signal badges (table & modal)
+           ================================================================ */
+        .human-signal-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 0.78rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            white-space: nowrap;
+        }
+        .hs-rebote      { background: rgba(0,200,150,0.15);  color: #00c896; border: 1px solid rgba(0,200,150,0.25); }
+        .hs-ruptura     { background: rgba(0,230,118,0.18);  color: #00e676; border: 1px solid rgba(0,230,118,0.3);  box-shadow: 0 0 8px rgba(0,230,118,0.15); }
+        .hs-tendencia   { background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.25); }
+        .hs-compras     { background: rgba(0,200,150,0.12);  color: #34d399; border: 1px solid rgba(0,200,150,0.2); }
+        .hs-excesiva    { background: rgba(245,158,11,0.15); color: #fbbf24; border: 1px solid rgba(245,158,11,0.25); }
+        .hs-ventas      { background: rgba(255,71,87,0.15);  color: #f87171; border: 1px solid rgba(255,71,87,0.25); }
+        .hs-soporte     { background: rgba(255,71,87,0.18);  color: #ef4444; border: 1px solid rgba(255,71,87,0.3); }
+        .hs-debil       { background: rgba(90,90,110,0.2);   color: var(--text-secondary); border: 1px solid var(--border); }
+        .hs-none        { background: rgba(50,50,60,0.3);    color: var(--text-tertiary);  border: 1px solid var(--border); }
+
+        /* ================================================================
+           HUMAN LAYER — Action & Risk pills
+           ================================================================ */
+        .action-pill {
+            display: inline-block;
+            padding: 3px 9px;
+            border-radius: 5px;
+            font-size: 0.76rem;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .action-comprar    { background: rgba(0,200,150,0.18); color: #00c896; }
+        .action-precaucion { background: rgba(0,200,150,0.10); color: #6ee7b7; }
+        .action-tomar      { background: rgba(245,158,11,0.18); color: #fbbf24; }
+        .action-vigilar    { background: rgba(59,130,246,0.15); color: #60a5fa; }
+        .action-esperar    { background: rgba(90,90,110,0.2);   color: var(--text-secondary); }
+        .action-evitar     { background: rgba(255,71,87,0.18);  color: #f87171; }
+
+        .risk-pill {
+            display: inline-block;
+            padding: 3px 9px;
+            border-radius: 5px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .risk-medio       { background: rgba(0,200,150,0.12);  color: #6ee7b7; }
+        .risk-medio-alto  { background: rgba(245,158,11,0.15); color: #fbbf24; }
+        .risk-alto        { background: rgba(255,71,87,0.15);  color: #f87171; }
+
+        .clarity-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+        .clarity-alta  { background: rgba(0,200,150,0.15); color: #00c896; }
+        .clarity-media { background: rgba(245,158,11,0.15); color: #fbbf24; }
+        .clarity-baja  { background: rgba(90,90,110,0.2); color: var(--text-secondary); }
+
+        /* ================================================================
+           HUMAN LAYER — Table col visibility
+           ================================================================ */
+        .col-simple { display: none; }
+        .col-pro    { display: table-cell; }
+        body.mode-simple .col-simple { display: table-cell; }
+        body.mode-simple .col-pro    { display: none; }
+
+        /* ================================================================
+           HUMAN LAYER — Modal human summary card
+           ================================================================ */
+        .human-summary-card {
+            background: linear-gradient(135deg, rgba(59,130,246,0.07), rgba(139,92,246,0.07));
+            border: 1px solid rgba(99,102,241,0.25);
+            border-radius: 12px;
+            padding: 18px 20px;
+            margin-bottom: 18px;
+        }
+        .human-summary-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+        .human-signal-big {
+            font-size: 1.1rem;
+            font-weight: 800;
+            letter-spacing: 0.04em;
+        }
+        .human-explanation-text {
+            font-size: 12px;
+            color: var(--text-secondary);
+            line-height: 1.6;
+            margin-bottom: 12px;
+        }
+        .human-meta-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .human-meta-label {
+            font-size: 10px;
+            color: var(--text-tertiary);
+            margin-bottom: 3px;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+        .human-meta-item {
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ================================================================
+           HUMAN LAYER — Strategy Lab human summary
+           ================================================================ */
+        .sl-human-block {
+            background: linear-gradient(135deg, rgba(0,200,150,0.06), rgba(59,130,246,0.06));
+            border: 1px solid rgba(0,200,150,0.15);
+            border-radius: 10px;
+            padding: 14px 18px;
+            margin-bottom: 16px;
+        }
+        .sl-human-block h4 {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text-secondary);
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+        }
+        .sl-human-insight {
+            font-size: 12px;
+            color: var(--text-primary);
+            line-height: 1.7;
+            padding-left: 12px;
+            border-left: 2px solid rgba(0,200,150,0.4);
+        }
     </style>
 </head>
 <body>
@@ -831,6 +1011,10 @@
             <span class="header-title">IOSEF FINANCE TERMINAL</span>
         </div>
         <div class="header-status" id="header-status">
+            <div class="mode-toggle" id="mode-toggle">
+                <button class="mode-btn active" data-mode="pro" onclick="toggleMode('pro')">🔬 Pro</button>
+                <button class="mode-btn" data-mode="simple" onclick="toggleMode('simple')">👤 Simple</button>
+            </div>
             <div class="header-metric">
                 <span class="status-dot connecting" id="ws-dot"></span>
                 <span class="label" id="ws-label">CONNECTING</span>
@@ -910,18 +1094,24 @@
                     <thead>
                         <tr>
                             <th data-col="ticker">Ticker</th>
-                            <th data-col="sector">Sector</th>
+                            <th data-col="sector" class="col-pro">Sector</th>
                             <th data-col="price">Last</th>
                             <th data-col="change_pct">Chg %</th>
-                            <th data-col="rsi">RSI</th>
-                            <th data-col="relative_volume">RVol</th>
-                            <th data-col="sma20">SMA20</th>
-                            <th data-col="sma50">SMA50</th>
-                            <th data-col="sma200">SMA200</th>
-                            <th data-col="momentum_1m">Mom 1M</th>
+                            <th data-col="rsi" class="col-pro">RSI</th>
+                            <th data-col="relative_volume" class="col-pro">RVol</th>
+                            <th data-col="sma20" class="col-pro">SMA20</th>
+                            <th data-col="sma50" class="col-pro">SMA50</th>
+                            <th data-col="sma200" class="col-pro">SMA200</th>
+                            <th data-col="momentum_1m" class="col-pro">Mom 1M</th>
                             <th data-col="signal_strength_score">Prioridad</th>
-                            <th data-col="composite_score">Score</th>
-                            <th data-col="ma_breakout_signal">Signal</th>
+                            <th data-col="composite_score" class="col-pro">Score</th>
+                            <th data-col="ma_breakout_signal" class="col-pro">Signal</th>
+                            <!-- Simple mode cols -->
+                            <th class="col-simple">Señal</th>
+                            <th class="col-simple">Acción</th>
+                            <th class="col-simple">Horizonte</th>
+                            <th class="col-simple">Riesgo</th>
+                            <th class="col-simple">Claridad</th>
                         </tr>
                     </thead>
                     <tbody id="table-body"></tbody>
@@ -1295,24 +1485,101 @@
 
             return `<tr onclick="openModal('${t.ticker}')" class="${flashCls}">
                 <td class="ticker-cell">${t.ticker}</td>
-                <td class="sector-cell">${t.sector || '—'}</td>
+                <td class="sector-cell col-pro">${t.sector || '—'}</td>
                 <td>${t.price.toFixed(2)}</td>
                 <td class="${chgCls}">${chgSign}${t.change_pct.toFixed(2)}%</td>
-                <td><span class="rsi-bar"><span class="rsi-indicator" style="background:${rsiBarColor}"></span><span class="${rsiCls}">${t.rsi.toFixed(1)}</span></span></td>
-                <td>${t.relative_volume.toFixed(2)}x</td>
-                <td>${t.sma20.toFixed(2)}</td>
-                <td>${t.sma50.toFixed(2)}</td>
-                <td>${t.sma200.toFixed(2)}</td>
-                <td class="${momCls}">${momSign}${t.momentum_1m.toFixed(2)}%</td>
+                <td class="col-pro"><span class="rsi-bar"><span class="rsi-indicator" style="background:${rsiBarColor}"></span><span class="${rsiCls}">${t.rsi.toFixed(1)}</span></span></td>
+                <td class="col-pro">${t.relative_volume.toFixed(2)}x</td>
+                <td class="col-pro">${t.sma20.toFixed(2)}</td>
+                <td class="col-pro">${t.sma50.toFixed(2)}</td>
+                <td class="col-pro">${t.sma200.toFixed(2)}</td>
+                <td class="col-pro ${momCls}">${momSign}${t.momentum_1m.toFixed(2)}%</td>
                 <td><span class="priority-badge ${priCls}">${priIcon} ${pScore.toFixed(0)} <span class="source-tag ${srcCls}">${srcLabel}</span></span></td>
-                <td><span class="score-badge ${scoreCls}">${t.composite_score}</span></td>
-                <td>${signal}</td>
+                <td class="col-pro"><span class="score-badge ${scoreCls}">${t.composite_score}</span></td>
+                <td class="col-pro">${signal}</td>
+                <td class="col-simple">${humanSignalBadge(t)}</td>
+                <td class="col-simple">${actionBadge(t.suggested_action)}</td>
+                <td class="col-simple" style="color:var(--text-secondary);font-size:0.78rem">${t.holding_period || '—'}</td>
+                <td class="col-simple">${riskBadge(t.risk_level)}</td>
+                <td class="col-simple">${clarityBadge(t.decision_clarity)}</td>
             </tr>`;
         });
 
         tbody.innerHTML = rows.join('');
-        storePrices(); // Update last known prices after render
+        storePrices();
     }
+
+    // ── Human Layer helpers ──────────────────────────────────────────────────
+    function humanSignalClass(sig) {
+        if (!sig) return 'hs-none';
+        const s = sig.toUpperCase();
+        if (s.includes('REBOTE'))    return 'hs-rebote';
+        if (s.includes('RUPTURA'))   return 'hs-ruptura';
+        if (s.includes('TENDENCIA')) return 'hs-tendencia';
+        if (s.includes('COMPRAS'))   return 'hs-compras';
+        if (s.includes('EXCESIVA'))  return 'hs-excesiva';
+        if (s.includes('VENTAS'))    return 'hs-ventas';
+        if (s.includes('SOPORTE'))   return 'hs-soporte';
+        if (s.includes('DÉBIL') || s.includes('DEBIL')) return 'hs-debil';
+        return 'hs-none';
+    }
+    function humanSignalBadge(t) {
+        const sig = t.human_signal || '— SIN SEÑAL';
+        return `<span class="human-signal-badge ${humanSignalClass(sig)}">${sig}</span>`;
+    }
+    function actionClass(action) {
+        if (!action) return 'action-esperar';
+        const a = action.toLowerCase();
+        if (a.includes('evitar') || a.includes('vender') || a.includes('reducir')) return 'action-evitar';
+        if (a.includes('tomar'))   return 'action-tomar';
+        if (a.includes('comprar con') || a.includes('precauci') || a.includes('vigilar antes')) return 'action-precaucion';
+        if (a.includes('comprar')) return 'action-comprar';
+        if (a.includes('vigilar')) return 'action-vigilar';
+        return 'action-esperar';
+    }
+    function actionBadge(action) {
+        return `<span class="action-pill ${actionClass(action)}">${action || 'Esperar'}</span>`;
+    }
+    function riskClass(risk) {
+        if (!risk) return 'risk-alto';
+        const r = risk.toLowerCase();
+        if (r.startsWith('medio-alto') || r.startsWith('medio alto')) return 'risk-medio-alto';
+        if (r.startsWith('medio')) return 'risk-medio';
+        return 'risk-alto';
+    }
+    function riskBadge(risk) {
+        return `<span class="risk-pill ${riskClass(risk)}">${risk || 'Alto'}</span>`;
+    }
+    function clarityClass(clarity) {
+        if (clarity === 'alta')  return 'clarity-alta';
+        if (clarity === 'media') return 'clarity-media';
+        return 'clarity-baja';
+    }
+    function clarityBadge(clarity) {
+        return `<span class="clarity-badge ${clarityClass(clarity)}">${clarity || 'baja'}</span>`;
+    }
+
+    // ── Mode Toggle ──────────────────────────────────────────────────────────
+    let viewMode = localStorage.getItem('iosef_view_mode') || 'pro';
+    function toggleMode(mode) {
+        viewMode = mode;
+        localStorage.setItem('iosef_view_mode', mode);
+        document.body.classList.toggle('mode-simple', mode === 'simple');
+        document.querySelectorAll('.mode-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.mode === mode);
+        });
+        renderTable();
+    }
+    (function applyInitialMode() {
+        if (viewMode === 'simple') {
+            document.body.classList.add('mode-simple');
+            document.querySelectorAll('.mode-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.mode === 'simple');
+            });
+        }
+    })();
+
+
 
     // ── Side panels ───────────────────────────────────────────────────────
     function renderSidePanels() {
@@ -1377,9 +1644,43 @@
             const info = dData.data || {};
             const fins = fData.data || {};
             let html = '<div class="modal-layout">';
-            
+
+            // ── Human Summary (always visible: Pro + Simple) ─────────────────
+            if (scanItem && scanItem.human_signal) {
+                const sigCls  = humanSignalClass(scanItem.human_signal);
+                const actCls  = actionClass(scanItem.suggested_action);
+                const rskCls  = riskClass(scanItem.risk_level);
+                const clrCls  = clarityClass(scanItem.decision_clarity);
+                html += `<div class="human-summary-card" style="grid-column:1/-1">
+                    <div class="human-summary-header">
+                        <span class="human-signal-big human-signal-badge ${sigCls}">${scanItem.human_signal}</span>
+                        <span class="clarity-badge ${clrCls}">Claridad: ${scanItem.decision_clarity || 'baja'}</span>
+                    </div>
+                    <p class="human-explanation-text">${scanItem.explanation || ''}</p>
+                    <div class="human-meta-row">
+                        <div class="human-meta-item">
+                            <span class="human-meta-label">Acción</span>
+                            <span class="action-pill ${actCls}">${scanItem.suggested_action || 'Esperar'}</span>
+                        </div>
+                        <div class="human-meta-item">
+                            <span class="human-meta-label">Horizonte</span>
+                            <span style="font-size:12px;color:var(--text-secondary)">⏱️ ${scanItem.holding_period || '—'}</span>
+                        </div>
+                        <div class="human-meta-item">
+                            <span class="human-meta-label">Riesgo</span>
+                            <span class="risk-pill ${rskCls}">${scanItem.risk_level || '—'}</span>
+                        </div>
+                        <div class="human-meta-item" style="margin-left:auto">
+                            <span class="human-meta-label">Confianza</span>
+                            <span style="font-size:11px;color:var(--text-tertiary)">${scanItem.confidence_text || '—'}</span>
+                        </div>
+                    </div>
+                </div>`;
+            }
+
             // Left Column
             html += '<div class="modal-col-left">';
+
             html += `
             <div class="tf-bar">
                 <button class="tf-btn active" data-period="1d" data-interval="1m" onclick="changeTimeframe(this, '${ticker}')">1D</button>
@@ -2033,10 +2334,58 @@
 
     function renderStrategyLab() {
         if (!strategyData) return;
-        
-        // Summary
-        document.getElementById('sl-summary-box').innerHTML = `<div class="sl-summary"><strong>💡 Optimization Insights:</strong><br>${strategyData.summary}</div>`;
-        
+
+        // ── Human Summary Block ─────────────────────────────────────────────
+        const top  = strategyData.ranking.top || [];
+        const low  = strategyData.ranking.low_quality || [];
+
+        const humanInsights = [];
+
+        // Best performing signal
+        if (top.length > 0) {
+            const best = top[0];
+            const bestLabel = best.name.replace(/__/g, ' con ').replace(/_/g, ' ').toLowerCase();
+            humanInsights.push(`La señal de <strong>${bestLabel}</strong> es la más confiable actualmente, con una ganancia esperada de <strong>${fmtVal(best.expectancy_5d)}% por operación</strong> en los últimos datos.`);
+        }
+
+        // Second signal insight
+        if (top.length > 1) {
+            const s2 = top[1];
+            const s2Label = s2.name.replace(/__/g, ' con ').replace(/_/g, ' ').toLowerCase();
+            humanInsights.push(`Las señales de <strong>${s2Label}</strong> también muestran buen historial (Profit Factor: ${fmtVal(s2.profit_factor)}).`);
+        }
+
+        // Low quality warning
+        if (low.length > 0) {
+            const worst = low[0];
+            const worstLabel = worst.name.replace(/__/g, ' con ').replace(/_/g, ' ').toLowerCase();
+            humanInsights.push(`⚠️ Las señales de <strong>${worstLabel}</strong> no son fiables actualmente. El sistema las descarta para evitar pérdidas.`);
+        }
+
+        // Context insight from market_context if available
+        const ctx = strategyData.market_context;
+        if (ctx) {
+            const breadth = ctx.market_breadth || ctx.breadth;
+            if (breadth != null) {
+                const bPct = (breadth * 100).toFixed(0);
+                if (breadth > 0.6) humanInsights.push(`El mercado está en tendencia alcista (${bPct}% de acciones sobre SMA50), lo que favorece señales de ruptura pero reduce el efectividad de señales de rebote.`);
+                else if (breadth < 0.4) humanInsights.push(`El mercado está débil (${bPct}% de acciones sobre SMA50): las señales de rebote tienen mayor efectividad histórica en este contexto.`);
+                else humanInsights.push(`El mercado está en zona neutral (${bPct}% de acciones sobre SMA50): ninguna señal recibe un bono de contexto significativo.`);
+            }
+        }
+
+        const humanHtml = humanInsights.length > 0
+            ? humanInsights.map(i => `<div class="sl-human-insight">${i}</div>`).join('')
+            : '<div class="sl-human-insight">Cargando análisis del mercado…</div>';
+
+        document.getElementById('sl-summary-box').innerHTML = `
+            <div class="sl-human-block">
+                <h4>📖 ¿Qué está pasando en el mercado?</h4>
+                ${humanHtml}
+            </div>
+            <div class="sl-summary"><strong>💡 Optimization Insights:</strong><br>${strategyData.summary}</div>`;
+
+
         // Ranking
         const rankGrid = document.getElementById('sl-ranking-container');
         let rankHtml = '';
