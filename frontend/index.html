@@ -1000,6 +1000,93 @@
             padding-left: 12px;
             border-left: 2px solid rgba(0,200,150,0.4);
         }
+
+        /* ================================================================
+           HUMAN LAYER — filter-pro (hide technical filters in Simple Mode)
+           ================================================================ */
+        body.mode-simple .filter-pro { display: none !important; }
+
+        /* ================================================================
+           HUMAN LAYER — pro-only-block (hide technical modal sections)
+           ================================================================ */
+        body.mode-simple .pro-only-block { display: none; }
+
+        /* ================================================================
+           SIMPLE MODE — hint bar in filter area
+           ================================================================ */
+        .simple-hint-bar {
+            display: none;
+            padding: 5px 10px;
+            background: linear-gradient(90deg, rgba(59,130,246,0.07), rgba(139,92,246,0.07));
+            border: 1px solid rgba(99,102,241,0.2);
+            border-radius: 6px;
+            font-size: 11px;
+            color: var(--text-secondary);
+            align-items: center;
+            gap: 6px;
+            white-space: nowrap;
+        }
+        body.mode-simple .simple-hint-bar { display: flex; }
+
+        /* ================================================================
+           MODAL-CONTENT alias — fixes Signal Lab & Strategy Lab visual cut
+           ================================================================ */
+        .modal-content {
+            background: var(--bg-1);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            width: 100%;
+            box-shadow: 0 25px 60px rgba(0,0,0,0.5);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ================================================================
+           SIMPLE MODE — Signal Lab human cards
+           ================================================================ */
+        .simple-signal-card {
+            background: var(--bg-1);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 18px 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+        .simple-signal-card.top-signal-card {
+            border-color: var(--amber);
+            box-shadow: 0 0 12px rgba(245,158,11,0.12);
+        }
+        .simple-signal-name {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+        .semaphore-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            white-space: nowrap;
+        }
+        .semaphore-green  { background: rgba(0,200,150,0.15);  color: #00c896; border: 1px solid rgba(0,200,150,0.3); }
+        .semaphore-yellow { background: rgba(245,158,11,0.15); color: #fbbf24; border: 1px solid rgba(245,158,11,0.3); }
+        .semaphore-red    { background: rgba(255,71,87,0.15);  color: #f87171; border: 1px solid rgba(255,71,87,0.3); }
+        .simple-win-text {
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+        .simple-win-text strong { color: var(--text-primary); }
+        .simple-horizon {
+            font-size: 11px;
+            color: var(--text-tertiary);
+        }
     </style>
 </head>
 <body>
@@ -1055,7 +1142,7 @@
                     <label>Sector</label>
                     <select id="f-sector"><option value="all">All</option></select>
                 </div>
-                <div class="filter-group">
+                <div class="filter-group filter-pro">
                     <label>RSI</label>
                     <select id="f-rsi">
                         <option value="all">All</option>
@@ -1064,7 +1151,7 @@
                         <option value="overbought">Overbought (&gt;70)</option>
                     </select>
                 </div>
-                <div class="filter-group">
+                <div class="filter-group filter-pro">
                     <label>Volume</label>
                     <select id="f-vol">
                         <option value="all">All</option>
@@ -1072,7 +1159,7 @@
                         <option value="low">Low (&lt;0.8x)</option>
                     </select>
                 </div>
-                <div class="filter-group">
+                <div class="filter-group filter-pro">
                     <label>Signal</label>
                     <select id="f-signal">
                         <option value="all">All</option>
@@ -1082,9 +1169,10 @@
                     </select>
                 </div>
                 <div class="filter-group" style="margin-left: auto; gap: 8px;">
-                    <button id="btn-strategy-lab" class="btn-primary" style="background:var(--purple)">⚙️ STRATEGY LAB</button>
+                    <button id="btn-strategy-lab" class="btn-primary filter-pro" style="background:var(--purple)">⚙️ STRATEGY LAB</button>
                     <button id="btn-signal-lab" class="btn-primary">🔬 SIGNAL LAB</button>
                 </div>
+                <span class="simple-hint-bar">✨ Mostrando las mejores oportunidades</span>
                 <span class="filter-count" id="filter-count"></span>
             </div>
 
@@ -1103,10 +1191,11 @@
                             <th data-col="sma50" class="col-pro">SMA50</th>
                             <th data-col="sma200" class="col-pro">SMA200</th>
                             <th data-col="momentum_1m" class="col-pro">Mom 1M</th>
-                            <th data-col="signal_strength_score">Prioridad</th>
+                            <th data-col="signal_strength_score" class="col-pro">Prioridad</th>
                             <th data-col="composite_score" class="col-pro">Score</th>
                             <th data-col="ma_breakout_signal" class="col-pro">Signal</th>
                             <!-- Simple mode cols -->
+                            <th class="col-simple">Prioridad</th>
                             <th class="col-simple">Señal</th>
                             <th class="col-simple">Acción</th>
                             <th class="col-simple">Horizonte</th>
@@ -1389,7 +1478,9 @@
             applyFilters();
         });
         document.getElementById('btn-signal-lab').addEventListener('click', openSignalLab);
-        document.getElementById('btn-strategy-lab').addEventListener('click', openStrategyLab);
+        document.getElementById('btn-strategy-lab').addEventListener('click', () => {
+            if (typeof openStrategyLab === 'function') openStrategyLab();
+        });
         document.addEventListener('keydown', e => {
             if (e.key === 'Escape') {
                 closeModal();
@@ -1472,6 +1563,8 @@
             else if (pScore >= 40) { priCls = 'priority-medium'; priIcon = '🟡'; }
             const srcCls = t.signal_strength_source === 'optimized' ? 'source-optimized' : 'source-fallback';
             const srcLabel = t.signal_strength_source === 'optimized' ? 'OPT' : 'FB';
+            // Simple-mode priority: icon + text label (no score number, no OPT/FB tag)
+            const priSimpleLabel = pScore >= 75 ? '🔥 Alta' : pScore >= 40 ? '🟡 Media' : '⚪ Baja';
 
             // Breakout signal
             const signal = t.ma_breakout_signal ? '<span class="breakout-badge">BRK</span>' : '';
@@ -1494,9 +1587,10 @@
                 <td class="col-pro">${t.sma50.toFixed(2)}</td>
                 <td class="col-pro">${t.sma200.toFixed(2)}</td>
                 <td class="col-pro ${momCls}">${momSign}${t.momentum_1m.toFixed(2)}%</td>
-                <td><span class="priority-badge ${priCls}">${priIcon} ${pScore.toFixed(0)} <span class="source-tag ${srcCls}">${srcLabel}</span></span></td>
+                <td class="col-pro"><span class="priority-badge ${priCls}">${priIcon} ${pScore.toFixed(0)} <span class="source-tag ${srcCls}">${srcLabel}</span></span></td>
                 <td class="col-pro"><span class="score-badge ${scoreCls}">${t.composite_score}</span></td>
                 <td class="col-pro">${signal}</td>
+                <td class="col-simple"><span class="priority-badge ${priCls}">${priSimpleLabel}</span></td>
                 <td class="col-simple">${humanSignalBadge(t)}</td>
                 <td class="col-simple">${actionBadge(t.suggested_action)}</td>
                 <td class="col-simple" style="color:var(--text-secondary);font-size:0.78rem">${t.holding_period || '—'}</td>
@@ -1568,6 +1662,11 @@
         document.querySelectorAll('.mode-btn').forEach(btn => {
             btn.classList.toggle('active', btn.dataset.mode === mode);
         });
+        // Update Signal Lab button label per mode
+        const sigLabBtn = document.getElementById('btn-signal-lab');
+        if (sigLabBtn) {
+            sigLabBtn.innerHTML = mode === 'simple' ? '📊 VER ANÁLISIS' : '🔬 SIGNAL LAB';
+        }
         renderTable();
     }
     (function applyInitialMode() {
@@ -1576,6 +1675,8 @@
             document.querySelectorAll('.mode-btn').forEach(btn => {
                 btn.classList.toggle('active', btn.dataset.mode === 'simple');
             });
+            const sigLabBtn = document.getElementById('btn-signal-lab');
+            if (sigLabBtn) sigLabBtn.innerHTML = '📊 VER ANÁLISIS';
         }
     })();
 
@@ -1692,7 +1793,8 @@
             <div id="chart-container"></div>
             `;
 
-            // Financials
+            // Financials — pro only block
+            html += '<div class="pro-only-block">';
             if (Object.keys(fins).length > 0) {
                 html += '<h3 style="margin-bottom:10px;font-size:13px;color:var(--text-secondary)">Quarterly Financials</h3>';
                 const dates = Object.keys(fins).sort((a, b) => new Date(b) - new Date(a));
@@ -1718,13 +1820,12 @@
                     html += '</tr>';
                 });
                 html += '</tbody></table></div>';
-            } else {
-                html += '<p style="color:var(--text-tertiary)">No financials available.</p>';
             }
+            html += '</div>'; // end pro-only financials
             html += '</div>'; // End Left Column
 
-            // Right Column
-            html += '<div class="modal-col-right">';
+            // Right Column — pro only
+            html += '<div class="modal-col-right pro-only-block">';
             html += '<div class="detail-grid">';
             
             if (scanItem) {
@@ -2070,6 +2171,28 @@
     async function openSignalLab() {
         const overlay = document.getElementById('signal-lab-overlay');
         overlay.classList.add('active');
+
+        // Update header and description based on current mode
+        const titleEl = document.getElementById('signal-lab-title');
+        const descEl  = document.getElementById('signal-lab-desc');
+        if (titleEl) {
+            if (viewMode === 'simple') {
+                titleEl.innerHTML = '<span class="icon">📊</span> PROBABILIDADES HISTÓRICAS DE SEÑALES';
+                if (descEl) descEl.innerHTML = `
+                    <strong>¿Qué es esto?</strong> Estas son las señales que el sistema monitorea.
+                    Las marcadas con 🏆 tienen el mejor historial de resultados en los últimos 2 años.
+                    <br><em>El porcentaje indica con qué frecuencia la señal ha sido correcta en el pasado. No garantiza resultados futuros.</em>
+                `;
+            } else {
+                titleEl.innerHTML = '<span class="icon">🔬</span> SIGNAL LAB — HISTORICAL PROBABILITIES';
+                if (descEl) descEl.innerHTML = `
+                    Empirical probabilities based on 2-year historical backtesting. Returns are measured over forward-looking horizons.
+                    <strong>Market Context:</strong> Bullish = Breadth &gt; 60%, Bearish = Breadth &lt; 40%.
+                    <em>Past performance does not guarantee future results.</em>
+                `;
+            }
+        }
+
         const grid = document.getElementById('signal-lab-grid');
         grid.innerHTML = '<div style="padding:20px;color:var(--text-secondary);text-align:center;">Evaluating historical signals...</div>';
         
@@ -2093,70 +2216,122 @@
             return;
         }
 
+        // Human-readable signal name translations
+        const SIGNAL_NAMES = {
+            oversold:             '🔻 Rebote desde sobreventa',
+            overbought:           '🔺 Caída tras subida excesiva',
+            ma_breakout_signal:   '⚡ Ruptura de media móvil',
+            momentum_shift_up:    '📈 Impulso comprador',
+            momentum_shift_down:  '📉 Impulso vendedor',
+            composite_score_high: '🎯 Señal compuesta fuerte',
+            high_volume:          '🔊 Volumen inusualmente alto',
+        };
+
         // Sort entries by 5-day win rate descending
         const sortedEntries = Object.entries(data).sort((a, b) => b[1].win_rate_5d - a[1].win_rate_5d);
 
         let html = '';
-        sortedEntries.forEach(([sigName, stats], index) => {
-            const confClass = 'conf-' + stats.confidence;
-            const confLabel = stats.confidence.replace('_', ' ');
-            const isTopSignal = index < 3;
 
-            const renderBar = (wr) => {
-                const pct = (wr * 100).toFixed(0);
-                const color = pct >= 60 ? 'bar-green' : (pct < 45 ? 'bar-red' : 'bar-amber');
-                return `
-                    <div class="metric-row">
-                        <span class="metric-label">${wr === stats.win_rate_1d ? '1 Day' : (wr === stats.win_rate_5d ? '5 Days' : '20 Days')}</span>
-                        <div class="metric-bar-bg">
-                            <div class="metric-bar-fill ${color}" style="width: ${pct}%"></div>
+        if (viewMode === 'simple') {
+            // ── MODO SIMPLE: tarjetas en lenguaje humano ─────────────────────
+            sortedEntries.forEach(([sigName, stats], index) => {
+                const isTopSignal = index < 3;
+                const humanName = SIGNAL_NAMES[sigName] || sigName.replace(/_/g, ' ');
+                const wr5  = (stats.win_rate_5d  * 100).toFixed(0);
+                const wr20 = (stats.win_rate_20d * 100).toFixed(0);
+
+                // Traffic-light semaphore based on 5-day win rate
+                let semClass = 'semaphore-red';
+                let semLabel = '🔴 Señal débil';
+                if (stats.win_rate_5d >= 0.60)      { semClass = 'semaphore-green';  semLabel = '🟢 Buena señal'; }
+                else if (stats.win_rate_5d >= 0.45)  { semClass = 'semaphore-yellow'; semLabel = '🟡 Señal moderada'; }
+
+                const bestHorizon = stats.win_rate_20d > stats.win_rate_5d
+                    ? '📅 Mejor a 2-4 semanas'
+                    : '⏱️ Mejor a 5-10 días';
+
+                html += `
+                    <div class="simple-signal-card ${isTopSignal ? 'top-signal-card' : ''}">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
+                            <div class="simple-signal-name">
+                                ${isTopSignal ? '<span title="Mejor historial" style="margin-right:4px;">🏆</span>' : ''}
+                                ${humanName}
+                            </div>
+                            <span class="semaphore-badge ${semClass}">${semLabel}</span>
                         </div>
-                        <span class="metric-val">${pct}%</span>
+                        <div class="simple-win-text">
+                            Históricamente esta señal funciona el <strong>${wr5}%</strong> de las veces en 5 días
+                            y el <strong>${wr20}%</strong> a 20 días.
+                        </div>
+                        <div class="simple-horizon">${bestHorizon} · ${stats.total_signals} ocurrencias en 2 años</div>
+                        <div class="signal-insight"><strong>¿Qué significa?</strong> ${stats.insight}</div>
                     </div>
                 `;
-            };
+            });
 
-            html += `
-                <div class="signal-card ${isTopSignal ? 'top-signal-card' : ''}">
-                    <div class="signal-card-header">
-                        <div>
-                            <div class="signal-name">
-                                ${isTopSignal ? '<span style="margin-right:4px;" title="Top Signal">🏆</span>' : ''}
-                                ${sigName.replace(/_/g, ' ').toUpperCase()}
+        } else {
+            // ── MODO PRO: vista técnica completa ─────────────────────────────
+            sortedEntries.forEach(([sigName, stats], index) => {
+                const confClass = 'conf-' + stats.confidence;
+                const confLabel = stats.confidence.replace('_', ' ');
+                const isTopSignal = index < 3;
+
+                const renderBar = (wr) => {
+                    const pct = (wr * 100).toFixed(0);
+                    const color = pct >= 60 ? 'bar-green' : (pct < 45 ? 'bar-red' : 'bar-amber');
+                    return `
+                        <div class="metric-row">
+                            <span class="metric-label">${wr === stats.win_rate_1d ? '1 Day' : (wr === stats.win_rate_5d ? '5 Days' : '20 Days')}</span>
+                            <div class="metric-bar-bg">
+                                <div class="metric-bar-fill ${color}" style="width: ${pct}%"></div>
                             </div>
-                            <div class="signal-count">${stats.total_signals} occurrences (2Y)</div>
+                            <span class="metric-val">${pct}%</span>
                         </div>
-                        <div class="confidence-badge ${confClass}">${confLabel}</div>
-                    </div>
-                    
-                    <div style="margin-top: 8px;">
-                        <div style="font-size:10px; color:var(--text-tertiary); margin-bottom:6px; text-transform:uppercase;">Win Rate</div>
-                        ${renderBar(stats.win_rate_1d)}
-                        ${renderBar(stats.win_rate_5d)}
-                        ${renderBar(stats.win_rate_20d)}
-                    </div>
-                    
-                    <div style="display:flex; justify-content:space-between; margin-top:10px; padding:10px; background:var(--bg-0); border-radius:4px;">
-                        <div style="text-align:center;">
-                            <div style="font-size:9px; color:var(--text-tertiary);">Avg Ret 5d</div>
-                            <div style="font-size:12px; font-family:var(--font-mono); color:${stats.avg_return_5d >= 0 ? 'var(--green)' : 'var(--red)'};">${stats.avg_return_5d > 0 ? '+' : ''}${stats.avg_return_5d.toFixed(2)}%</div>
+                    `;
+                };
+
+                html += `
+                    <div class="signal-card ${isTopSignal ? 'top-signal-card' : ''}">
+                        <div class="signal-card-header">
+                            <div>
+                                <div class="signal-name">
+                                    ${isTopSignal ? '<span style="margin-right:4px;" title="Top Signal">🏆</span>' : ''}
+                                    ${sigName.replace(/_/g, ' ').toUpperCase()}
+                                </div>
+                                <div class="signal-count">${stats.total_signals} occurrences (2Y)</div>
+                            </div>
+                            <div class="confidence-badge ${confClass}">${confLabel}</div>
                         </div>
-                        <div style="text-align:center; border-left:1px solid var(--border); padding-left:10px;">
-                            <div style="font-size:9px; color:var(--text-tertiary);">Bullish Ctx</div>
-                            <div style="font-size:12px; font-family:var(--font-mono);">${(stats.bullish_context_win_rate * 100).toFixed(0)}%</div>
+                        
+                        <div style="margin-top: 8px;">
+                            <div style="font-size:10px; color:var(--text-tertiary); margin-bottom:6px; text-transform:uppercase;">Win Rate</div>
+                            ${renderBar(stats.win_rate_1d)}
+                            ${renderBar(stats.win_rate_5d)}
+                            ${renderBar(stats.win_rate_20d)}
                         </div>
-                        <div style="text-align:center; border-left:1px solid var(--border); padding-left:10px;">
-                            <div style="font-size:9px; color:var(--text-tertiary);">Bearish Ctx</div>
-                            <div style="font-size:12px; font-family:var(--font-mono);">${(stats.bearish_context_win_rate * 100).toFixed(0)}%</div>
+                        
+                        <div style="display:flex; justify-content:space-between; margin-top:10px; padding:10px; background:var(--bg-0); border-radius:4px;">
+                            <div style="text-align:center;">
+                                <div style="font-size:9px; color:var(--text-tertiary);">Avg Ret 5d</div>
+                                <div style="font-size:12px; font-family:var(--font-mono); color:${stats.avg_return_5d >= 0 ? 'var(--green)' : 'var(--red)'};">$${stats.avg_return_5d > 0 ? '+' : ''}${stats.avg_return_5d.toFixed(2)}%</div>
+                            </div>
+                            <div style="text-align:center; border-left:1px solid var(--border); padding-left:10px;">
+                                <div style="font-size:9px; color:var(--text-tertiary);">Bullish Ctx</div>
+                                <div style="font-size:12px; font-family:var(--font-mono);">${(stats.bullish_context_win_rate * 100).toFixed(0)}%</div>
+                            </div>
+                            <div style="text-align:center; border-left:1px solid var(--border); padding-left:10px;">
+                                <div style="font-size:9px; color:var(--text-tertiary);">Bearish Ctx</div>
+                                <div style="font-size:12px; font-family:var(--font-mono);">${(stats.bearish_context_win_rate * 100).toFixed(0)}%</div>
+                            </div>
+                        </div>
+                        
+                        <div class="signal-insight">
+                            <strong>Insight:</strong> ${stats.insight}
                         </div>
                     </div>
-                    
-                    <div class="signal-insight">
-                        <strong>Insight:</strong> ${stats.insight}
-                    </div>
-                </div>
-            `;
-        });
+                `;
+            });
+        }
         grid.innerHTML = html;
     }
 
@@ -2168,12 +2343,12 @@
     <div class="modal-overlay" id="signal-lab-overlay">
         <div class="modal-content" style="max-width: 1000px; height: 85vh;">
             <div class="modal-top">
-                <h2><span class="icon">🔬</span> SIGNAL LAB — HISTORICAL PROBABILITIES</h2>
+                <h2 id="signal-lab-title"><span class="icon">🔬</span> SIGNAL LAB — HISTORICAL PROBABILITIES</h2>
                 <button class="modal-close" onclick="closeSignalLab()">✕</button>
             </div>
             <div class="modal-body" style="padding: 0; background: var(--bg-0); overflow-y: auto;">
                 <div style="padding: 16px 20px; border-bottom: 1px solid var(--border); background: var(--bg-1);">
-                    <p style="font-size: 12px; color: var(--text-secondary); line-height: 1.5; margin: 0;">
+                    <p id="signal-lab-desc" style="font-size: 12px; color: var(--text-secondary); line-height: 1.5; margin: 0;">
                         Empirical probabilities based on 2-year historical backtesting. Returns are measured over forward-looking horizons.
                         <strong>Market Context:</strong> Bullish = Breadth &gt; 60%, Bearish = Breadth &lt; 40%.
                         <em>Past performance does not guarantee future results.</em>
@@ -2235,9 +2410,9 @@
             <div class="sl-ranking-grid" id="sl-ranking-container"></div>
             
             <div class="sl-tabs">
-                <div class="sl-tab active" onclick="switchSlTab('ind')">Individual Signals</div>
-                <div class="sl-tab" onclick="switchSlTab('comb')">Combined Filters</div>
-                <div class="sl-tab" onclick="switchSlTab('exit')">Exit Rules</div>
+                <div class="sl-tab active" onclick="switchSlTab('ind', event)">Individual Signals</div>
+                <div class="sl-tab" onclick="switchSlTab('comb', event)">Combined Filters</div>
+                <div class="sl-tab" onclick="switchSlTab('exit', event)">Exit Rules</div>
             </div>
             
             <div style="flex:1; overflow-y:auto;">
@@ -2312,11 +2487,12 @@
         document.getElementById('strategy-lab-overlay').classList.remove('active');
     }
 
-    function switchSlTab(tabId) {
+    function switchSlTab(tabId, e) {
         document.querySelectorAll('.sl-tab').forEach(el => el.classList.remove('active'));
         document.querySelectorAll('.sl-content').forEach(el => el.classList.remove('active'));
         
-        event.currentTarget.classList.add('active');
+        const target = e ? e.currentTarget : (window.event?.currentTarget || document.querySelector(`.sl-tab[onclick*="'${tabId}'"]`));
+        if (target) target.classList.add('active');
         document.getElementById(`sl-tab-${tabId}`).classList.add('active');
     }
 
@@ -2389,8 +2565,6 @@
         // Ranking
         const rankGrid = document.getElementById('sl-ranking-container');
         let rankHtml = '';
-        const top = strategyData.ranking.top || [];
-        const low = strategyData.ranking.low_quality || [];
         
         top.slice(0,3).forEach((r, i) => {
             const medals = ['🥇', '🥈', '🥉'];

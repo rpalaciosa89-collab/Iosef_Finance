@@ -92,7 +92,7 @@ def _suggested_action(situation: str, score: float, ctx_adj: float) -> str:
         return "Esperar"
 
     if situation == "breakdown":
-        return "Evitar o vender"
+        return "No comprar / Vender si tienes"
 
     if situation == "momentum_down":
         if score >= 40:
@@ -198,21 +198,31 @@ def _risk_level(score: float, ctx_adj: float, situation: str) -> str:
 
 def _explanation(situation: str, score: float, ctx_adj: float, t: dict) -> str:
     adverse = ctx_adj <= -0.15
-    ctx_suffix = " Sin embargo, el mercado general está fuerte, lo que históricamente reduce la efectividad de esta señal." if adverse else ""
+    
+    is_bullish = situation in ("oversold", "breakout_strong", "breakout_forming", "momentum_up", "strong_trend")
+    is_bearish = situation in ("overbought", "breakdown", "momentum_down")
+    
+    if adverse and is_bullish:
+        ctx_suffix = " Sin embargo, el mercado general está débil, lo que añade riesgo a esta oportunidad."
+    elif adverse and is_bearish:
+        ctx_suffix = " Sin embargo, el mercado general está fuerte, lo que reduce la probabilidad de caídas."
+    else:
+        ctx_suffix = ""
 
     rsi     = t.get("rsi", 50.0)
     change  = t.get("change_pct", 0.0)
     rvol    = t.get("relative_volume", 1.0)
 
     if situation == "oversold":
-        base = f"Esta acción ha caído demasiado rápido (RSI en zona de rebote) y el sistema detecta una posible oportunidad de recuperación."
+        base = "Esta acción ha caído muy rápido y el sistema detecta una posible oportunidad de rebote."
         return base + ctx_suffix
 
     if situation == "overbought":
-        return (
+        base = (
             "La acción lleva subiendo con fuerza y el sistema detecta señales de agotamiento. "
             "Puede ser buen momento para asegurar ganancias si tienes posición."
         )
+        return base + ctx_suffix
 
     if situation == "breakout_strong":
         base = "La acción está rompiendo una zona de resistencia importante con fuerza compradora y buena señal técnica."
@@ -231,16 +241,18 @@ def _explanation(situation: str, score: float, ctx_adj: float, t: dict) -> str:
         )
 
     if situation == "momentum_down":
-        return (
+        base = (
             f"Esta acción cae con fuerza ({change:.1f}%) y el sistema no detecta señales claras de recuperación cercana. "
             "Es preferible esperar a que se estabilice."
         )
+        return base + ctx_suffix
 
     if situation == "breakdown":
-        return (
+        base = (
             "La acción perdió niveles técnicos importantes y el sistema detecta debilidad estructural. "
             "No es un buen momento para entrar."
         )
+        return base + ctx_suffix
 
     if situation == "strong_trend":
         return (
