@@ -2158,44 +2158,65 @@
         if (!tracking.trade_status || tracking.trade_status === 'pending') return '';
 
         let emoji = '🟢';
-        let label = 'En curso';
+        let label = 'EN CURSO';
+        let borderColor = '#3b82f6'; // blue for open
+        
+        if (tracking.trade_status === 'closed_win') {
+            emoji = '✅'; label = 'GANADOR'; borderColor = 'var(--green)';
+        } else if (tracking.trade_status === 'closed_loss') {
+            emoji = '❌'; label = 'PERDEDOR'; borderColor = 'var(--red)';
+        } else if (tracking.trade_status === 'closed_expired') {
+            emoji = '⏳'; label = 'EXPIRADO'; borderColor = '#eab308'; // yellow
+        }
+
         let pnlColor = 'var(--text-main)';
         let pnlText = tracking.pnl_percentage > 0 ? `+${tracking.pnl_percentage.toFixed(2)}%` : `${tracking.pnl_percentage.toFixed(2)}%`;
-        
         if (tracking.pnl_percentage > 0) pnlColor = 'var(--green)';
         else if (tracking.pnl_percentage < 0) pnlColor = 'var(--red)';
 
-        if (tracking.trade_status === 'closed_win') {
-            emoji = '✅'; label = 'Ganador';
-        } else if (tracking.trade_status === 'closed_loss') {
-            emoji = '❌'; label = 'Perdedor';
-        } else if (tracking.trade_status === 'closed_expired') {
-            emoji = '⏳'; label = 'Expirado';
+        // Translated reason
+        let reasonTranslated = "";
+        let contextTranslated = "";
+        if (tracking.exit_reason === "target hit") {
+            reasonTranslated = "Objetivo alcanzado";
+            contextTranslated = "objetivo alcanzado";
+        } else if (tracking.exit_reason === "stop loss hit") {
+            reasonTranslated = "Stop Loss ejecutado";
+            contextTranslated = "stop loss";
+        } else if (tracking.exit_reason === "time expired") {
+            reasonTranslated = "Tiempo expirado sin alcanzar niveles";
+            contextTranslated = "expirado";
+        } else if (tracking.exit_reason) {
+            reasonTranslated = tracking.exit_reason;
+            contextTranslated = tracking.exit_reason;
         }
+
+        let resultLabel = tracking.trade_status === 'open' ? 'Resultado Actual' : 'Resultado Final';
+        let pnlContext = contextTranslated ? ` <span style="font-size:12px; font-weight:normal; color:var(--text-muted)">(${contextTranslated})</span>` : '';
 
         const durMin = Math.floor(tracking.trade_duration_seconds / 60);
         const timeActive = durMin > 0 ? `${durMin} min` : `${tracking.trade_duration_seconds} s`;
 
-        let html = `<div class="estado-senal" style="margin-top:-8px; border-left: 3px solid #888;">
-            <div class="estado-senal-title">📊 SEGUIMIENTO EN VIVO</div>
+        let html = `<div class="estado-senal" style="margin-top:-8px; border-left: 4px solid ${borderColor};">
+            <div class="estado-senal-title" style="display:flex; justify-content:space-between; align-items:center;">
+                <span>📊 SEGUIMIENTO EN VIVO</span>
+                <span style="font-size: 1.1rem; font-weight: bold; color: ${borderColor};">${emoji} ${label}</span>
+            </div>
             <div class="estado-senal-grid">
                 <div class="estado-senal-item">
-                    <span class="estado-senal-label">Estado</span>
-                    <span class="estado-senal-value">${emoji} ${label}</span>
-                </div>
-                <div class="estado-senal-item">
-                    <span class="estado-senal-label">Resultado Actual</span>
-                    <span class="estado-senal-value" style="color:${pnlColor}; font-weight:bold;">${pnlText} <span style="font-size:10px; font-weight:normal; color:var(--text-muted)">($${tracking.pnl_absolute.toFixed(2)})</span></span>
+                    <span class="estado-senal-label">${resultLabel}</span>
+                    <span class="estado-senal-value" style="color:${pnlColor}; font-weight:bold; font-size:1.15rem;">${pnlText}${pnlContext}</span>
+                    <span class="estado-senal-value" style="font-size:11px; color:var(--text-muted); margin-top:2px;">Monto Absoluto: $${tracking.pnl_absolute.toFixed(2)}</span>
                 </div>
                 <div class="estado-senal-item">
                     <span class="estado-senal-label">Tiempo activo</span>
                     <span class="estado-senal-value">${timeActive}</span>
                 </div>`;
 
-        if (tracking.exit_reason) {
-            html += `<div class="estado-senal-item">
-                    <span class="estado-senal-label">Motivo de salida</span>
-                    <span class="estado-senal-value">${tracking.exit_reason}</span>
+        if (reasonTranslated) {
+            html += `<div class="estado-senal-item" style="grid-column: 1 / -1; margin-top: 4px; padding-top: 8px; border-top: 1px dashed var(--border);">
+                    <span class="estado-senal-label">Salida</span>
+                    <span class="estado-senal-value" style="color:var(--text-main); font-weight:500;">${reasonTranslated}</span>
                 </div>`;
         }
 
