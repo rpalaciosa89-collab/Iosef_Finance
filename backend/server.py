@@ -873,10 +873,10 @@ def get_top(market: str = DEFAULT_MARKET):
     top20 = sorted(data, key=lambda x: (x.get("signal_strength_score", 0.0), x.get("composite_score", 0)), reverse=True)[:20]
     return {"timestamp": scan.get("timestamp"), "market": market, "data": top20}
 
-@app.get("/api/history/debug")
-def get_history_debug(limit: int = 50):
-    """Debug endpoint to list recently persisted trades."""
-    return {"data": persistence.get_recent_history(limit)}
+@app.get("/api/history")
+def get_history(limit: int = 100, offset: int = 0):
+    """Endpoint to list persisted trades."""
+    return {"data": persistence.get_history(limit, offset)}
 
 @app.get("/api/ticker/{ticker}")
 def get_ticker_detail(ticker: str):

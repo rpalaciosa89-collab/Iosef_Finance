@@ -2,11 +2,12 @@ import sqlite3
 import os
 import logging
 from typing import Dict, Any
+from datetime import datetime, timezone
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "trades_history.db")
 
 def init_db():
-    """Initializes the SQLite database and creates the trades table if it doesn't exist."""
+    """Initializes the SQLite database, creates the trades table, and cleans up invalid/TEST records."""
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -45,15 +46,85 @@ def init_db():
             PRIMARY KEY (ticker, signal_detected_at)
         )
     """)
+    
+    # Clean up legacy invalid/TEST records to maintain database integrity
+    cursor.execute("""
+        DELETE FROM trades 
+        WHERE ticker IS NULL 
+           OR ticker = 'TEST' 
+           OR entry_price IS NULL OR entry_price <= 0
+           OR stop_loss IS NULL OR stop_loss <= 0
+           OR take_profit IS NULL OR take_profit <= 0
+           OR trade_opened_at IS NULL OR trade_opened_at = ''
+           OR trade_closed_at IS NULL OR trade_closed_at = ''
+    """)
+    deleted_rows = cursor.rowcount
+    if deleted_rows > 0:
+        logging.info(f"🧹 Database Cleanup: Removed {deleted_rows} invalid/testing records from trades table.")
+        
     conn.commit()
     conn.close()
     logging.info(f"Persistence DB initialized at {DB_PATH}")
 
+def normalize_to_iso(val) -> str:
+    """Normalizes any input timestamp (float, int, or string) to a standard ISO 8601 string."""
+    if not val:
+        return ""
+    if isinstance(val, (int, float)):
+        return datetime.fromtimestamp(val, tz=timezone.utc).isoformat()
+    if isinstance(val, str):
+        val_str = val.strip()
+        if "T" in val_str:
+            return val_str
+        # If it's a numeric Unix timestamp string
+        try:
+            num = float(val_str)
+            return datetime.fromtimestamp(num, tz=timezone.utc).isoformat()
+        except ValueError:
+            pass
+        return val_str
+    return ""
+
 def save_closed_trade(data: Dict[str, Any]):
     """
     Saves a closed trade to the database. 
-    Uses INSERT OR IGNORE to prevent duplicates based on (ticker, signal_detected_at).
+    Rigorously validates fields and normalizes dates before saving.
     """
+    ticker = data.get("ticker")
+    entry_price = data.get("entry_price")
+    stop_loss = data.get("stop_loss")
+    take_profit = data.get("take_profit")
+    trade_opened_at = data.get("trade_opened_at")
+    trade_closed_at = data.get("trade_closed_at")
+
+    # PART 1 — VALIDATION EN BACKEND (CRÍTICO)
+    # 1. No guardar si es ticker de pruebas o incompleto
+    if not ticker or ticker.strip().upper() == "TEST":
+        logging.warning("⚠️ Trade save skipped: Ticker is invalid or 'TEST'")
+        return
+
+    # 2. Validar precios críticos
+    try:
+        entry_price = float(entry_price) if entry_price is not None else 0.0
+        stop_loss = float(stop_loss) if stop_loss is not None else 0.0
+        take_profit = float(take_profit) if take_profit is not None else 0.0
+    except (ValueError, TypeError):
+        logging.warning(f"⚠️ Trade save skipped for {ticker}: Non-numeric pricing data.")
+        return
+
+    if entry_price <= 0.0 or stop_loss <= 0.0 or take_profit <= 0.0:
+        logging.warning(f"⚠️ Trade save skipped for {ticker}: Critical prices must be positive. Entry: {entry_price}, SL: {stop_loss}, TP: {take_profit}")
+        return
+
+    # 3. Validar fechas de apertura y cierre
+    norm_opened = normalize_to_iso(trade_opened_at)
+    norm_closed = normalize_to_iso(trade_closed_at)
+    norm_detected = normalize_to_iso(data.get("signal_detected_at") or trade_opened_at)
+
+    if not norm_opened or not norm_closed:
+        logging.warning(f"⚠️ Trade save skipped for {ticker}: Missing or invalid opening/closing timestamps.")
+        return
+
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
@@ -81,39 +152,58 @@ def save_closed_trade(data: Dict[str, Any]):
         )
     """
     
-    # Fill defaults for missing fields to avoid KeyError
     fields = [
-        "ticker", "market", "signal_type", "human_signal", "score_at_detection",
-        "signal_detected_at", "trade_opened_at", "trade_closed_at",
+        "market", "signal_type", "human_signal", "score_at_detection",
         "signal_status_at_detection", "entry_window_status_at_detection",
         "market_context_used", "signal_context_adjustment",
-        "entry_price", "stop_loss", "take_profit", "risk_reward_ratio",
-        "trade_direction", "trade_status", "trade_result",
+        "risk_reward_ratio", "trade_direction", "trade_status", "trade_result",
         "pnl_percentage", "pnl_absolute", "trade_duration_seconds",
         "exit_reason", "signal_invalid_reason", "confidence_text",
         "decision_clarity", "suggested_action", "holding_period"
     ]
     
     params = {field: data.get(field) for field in fields}
+    params["ticker"] = ticker
+    params["entry_price"] = entry_price
+    params["stop_loss"] = stop_loss
+    params["take_profit"] = take_profit
+    params["signal_detected_at"] = norm_detected
+    params["trade_opened_at"] = norm_opened
+    params["trade_closed_at"] = norm_closed
     
     try:
         cursor.execute(query, params)
         if cursor.rowcount > 0:
-            logging.info(f"✅ Trade persisted successfully: {data.get('ticker')} ({data.get('trade_result')})")
+            logging.info(f"✅ Trade persisted successfully: {ticker} ({data.get('trade_result')})")
         conn.commit()
     except Exception as e:
-        logging.error(f"Error saving trade for {data.get('ticker')}: {e}")
+        logging.error(f"Error saving trade for {ticker}: {e}")
     finally:
         conn.close()
 
-def get_recent_history(limit: int = 50) -> list:
-    """Retrieves the most recent closed trades for debugging purposes."""
+def get_history(limit: int = 100, offset: int = 0) -> list:
+    """
+    Retrieves the history of closed trades, ordered by closed time descending.
+    PART 2 — FILTRO EN GET /api/history (excluye registros incompletos o de prueba).
+    """
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
     
-    cursor.execute("SELECT * FROM trades ORDER BY trade_closed_at DESC LIMIT ?", (limit,))
+    query = """
+        SELECT * FROM trades 
+        WHERE ticker IS NOT NULL AND ticker != 'TEST'
+          AND entry_price IS NOT NULL AND entry_price > 0
+          AND stop_loss IS NOT NULL AND stop_loss > 0
+          AND take_profit IS NOT NULL AND take_profit > 0
+          AND trade_opened_at IS NOT NULL AND trade_opened_at != ''
+          AND trade_closed_at IS NOT NULL AND trade_closed_at != ''
+        ORDER BY trade_closed_at DESC 
+        LIMIT ? OFFSET ?
+    """
+    cursor.execute(query, (limit, offset))
     rows = cursor.fetchall()
     conn.close()
     
     return [dict(row) for row in rows]
+

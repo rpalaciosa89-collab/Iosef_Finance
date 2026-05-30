@@ -53,17 +53,39 @@
         }
 
         /* ================================================================
-           HEADER BAR
+           HEADER BAR & TABS
            ================================================================ */
         .header-bar {
             background: var(--bg-1);
             border-bottom: 1px solid var(--border);
             padding: 0 16px;
-            height: 44px;
+            height: 48px;
             display: flex;
             align-items: center;
             justify-content: space-between;
             flex-shrink: 0;
+        }
+
+        .nav-tab {
+            background: transparent;
+            border: 1px solid transparent;
+            color: var(--text-secondary);
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 500;
+            font-family: var(--font-sans);
+            cursor: pointer;
+            transition: var(--transition);
+        }
+        .nav-tab:hover {
+            color: var(--text-primary);
+            background: var(--bg-2);
+        }
+        .nav-tab.active {
+            color: var(--blue);
+            background: var(--blue-dim);
+            border-color: rgba(59, 130, 246, 0.3);
         }
 
         .header-brand {
@@ -1183,9 +1205,13 @@
 
     <!-- HEADER -->
     <div class="header-bar">
-        <div class="header-brand">
+        <div class="header-brand" style="margin-right: 20px;">
             <div class="header-logo">IF</div>
-            <span class="header-title">IOSEF FINANCE TERMINAL</span>
+            <span class="header-title" style="margin-right: 15px;">IOSEF FINANCE</span>
+            <div class="nav-tabs" style="display:flex; gap:5px;">
+                <button class="nav-tab active" id="tab-scanner" onclick="switchView('scanner')">📡 Escáner</button>
+                <button class="nav-tab" id="tab-history" onclick="switchView('history')">📜 Historial</button>
+            </div>
         </div>
         <div class="header-status" id="header-status">
             <div class="mode-toggle" id="mode-toggle">
@@ -1210,8 +1236,8 @@
     <!-- MARKET TICKER BAR -->
     <div class="market-bar" id="market-bar"></div>
 
-    <!-- MAIN LAYOUT -->
-    <div class="app-layout">
+    <!-- MAIN LAYOUT (SCANNER) -->
+    <div class="app-layout" id="view-scanner">
         <!-- LEFT: Main Table -->
         <div class="main-panel">
             <!-- Filters -->
@@ -1326,6 +1352,39 @@
         </div>
     </div>
 
+    <!-- MAIN LAYOUT (HISTORY) -->
+    <div class="app-layout" id="view-history" style="display: none; background: var(--bg-0);">
+        <div class="main-panel" style="padding: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 style="font-size: 16px; font-weight: 600; color: var(--text-primary);">Historial de Operaciones Simuladas</h2>
+                <button class="btn-primary" onclick="fetchHistory()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21v-5h5"/></svg> Refrescar</button>
+            </div>
+            
+            <div class="table-container">
+                <table class="data-table" id="history-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 12%;">TICKER</th>
+                            <th style="width: 15%;">SEÑAL / ESTADO</th>
+                            <th style="width: 15%;">RESULTADO</th>
+                            <th style="width: 10%;">% PNL</th>
+                            <th style="width: 20%;">ENTRY / TP / SL</th>
+                            <th style="width: 10%;">DURACIÓN</th>
+                            <th style="width: 18%;">FECHAS</th>
+                        </tr>
+                    </thead>
+                    <tbody id="history-table-body">
+                        <!-- History rows will go here -->
+                    </tbody>
+                </table>
+            </div>
+            
+            <div style="margin-top: 15px; text-align: center;">
+                <button class="btn-primary" style="display:inline-flex; background:var(--bg-3);" id="btn-load-more" onclick="loadMoreHistory()">Cargar más</button>
+            </div>
+        </div>
+    </div>
+
     <!-- STATUS BAR -->
     <div class="status-bar">
         <span id="sb-backend">Backend: —</span>
@@ -1368,6 +1427,27 @@
     let dropdownsDone = false;
     let currentMarket = 'nasdaq100';
     const activeAlerts = new Map(); // deduplication memory
+    
+    // History State
+    let historyData = [];
+    let historyOffset = 0;
+    const historyLimit = 50;
+
+    // ── Tab Navigation ────────────────────────────────────────────────────
+    function switchView(viewName) {
+        document.getElementById('tab-scanner').classList.remove('active');
+        document.getElementById('tab-history').classList.remove('active');
+        
+        document.getElementById('view-scanner').style.display = 'none';
+        document.getElementById('view-history').style.display = 'none';
+        
+        document.getElementById('tab-' + viewName).classList.add('active');
+        document.getElementById('view-' + viewName).style.display = 'flex';
+        
+        if (viewName === 'history') {
+            fetchHistory(true); // reset and fetch
+        }
+    }
 
     // ── Init ──────────────────────────────────────────────────────────────
     async function init() {
@@ -1405,6 +1485,129 @@
             document.getElementById('sb-backend').textContent = 'Backend: OFFLINE';
             console.error('Initial fetch failed', e);
         }
+    }
+
+    // ── HTTP: History data ───────────────────────────────────────────────
+    async function fetchHistory(reset = false) {
+        if (reset) {
+            historyOffset = 0;
+            historyData = [];
+            document.getElementById('history-table-body').innerHTML = '<tr><td colspan="7" style="text-align:center; padding:20px;">Cargando historial...</td></tr>';
+        }
+        
+        try {
+            const res = await fetch(`${API}/history?limit=${historyLimit}&offset=${historyOffset}&_t=${Date.now()}`, { cache: 'no-store' });
+            const json = await res.json();
+            
+            if (reset) {
+                historyData = json.data || [];
+            } else {
+                historyData = historyData.concat(json.data || []);
+            }
+            
+            renderHistoryTable();
+            
+            const btnMore = document.getElementById('btn-load-more');
+            if (json.data && json.data.length < historyLimit) {
+                btnMore.style.display = 'none';
+            } else {
+                btnMore.style.display = 'inline-flex';
+            }
+            
+        } catch (e) {
+            console.error('History fetch failed', e);
+            document.getElementById('history-table-body').innerHTML = '<tr><td colspan="7" style="text-align:center; color:var(--red); padding:20px;">Error al cargar el historial.</td></tr>';
+        }
+    }
+    
+    function loadMoreHistory() {
+        historyOffset += historyLimit;
+        fetchHistory(false);
+    }
+    
+    function formatHistoryTime(val) {
+        if (!val) return 'No disponible';
+        let d = new Date(val);
+        if (isNaN(d.getTime())) {
+            if (!isNaN(val)) {
+                const num = Number(val);
+                const ms = num < 10000000000 ? num * 1000 : num;
+                d = new Date(ms);
+            }
+        }
+        if (isNaN(d.getTime())) return 'No disponible';
+        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function renderHistoryTable() {
+        const tbody = document.getElementById('history-table-body');
+        
+        if (!historyData || historyData.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:20px; color:var(--text-secondary);">No hay operaciones cerradas registradas en el historial.</td></tr>';
+            return;
+        }
+        
+        let html = '';
+        historyData.forEach((trade, idx) => {
+            // PARTE 5: Frontend defensivo. Si falta algún campo crítico, no renderizar la fila.
+            if (trade.entry_price == null || trade.stop_loss == null || trade.take_profit == null) {
+                return; // Skip rendering
+            }
+
+            // Determine result display
+            let resDisplay = '';
+            let pnlColor = 'var(--text-primary)';
+            
+            if (trade.trade_result === 'win') {
+                resDisplay = '<span class="status-badge" style="background:var(--green-dim);color:var(--green);border:1px solid rgba(0,200,150,0.3);"><span class="icon">✅</span> GANADOR</span>';
+                pnlColor = 'var(--green)';
+            } else if (trade.trade_result === 'loss') {
+                resDisplay = '<span class="status-badge" style="background:var(--red-dim);color:var(--red);border:1px solid rgba(255,71,87,0.3);"><span class="icon">❌</span> PERDEDOR</span>';
+                pnlColor = 'var(--red)';
+            } else {
+                resDisplay = '<span class="status-badge" style="background:var(--amber-dim);color:var(--amber);border:1px solid rgba(245,158,11,0.3);"><span class="icon">⏳</span> EXPIRADO</span>';
+                pnlColor = 'var(--amber)';
+            }
+            
+            const pnlStr = trade.pnl_percentage ? (trade.pnl_percentage > 0 ? '+' : '') + trade.pnl_percentage.toFixed(2) + '%' : '0.00%';
+            
+            const entry = trade.entry_price ? trade.entry_price.toFixed(2) : '—';
+            const tp = trade.take_profit ? trade.take_profit.toFixed(2) : '—';
+            const sl = trade.stop_loss ? trade.stop_loss.toFixed(2) : '—';
+            
+            let durationStr = '—';
+            if (trade.trade_duration_seconds) {
+                const mins = Math.floor(trade.trade_duration_seconds / 60);
+                durationStr = mins > 0 ? `${mins}m` : `${trade.trade_duration_seconds}s`;
+            }
+            
+            const detectedDate = formatHistoryTime(trade.signal_detected_at);
+            const closedDate = formatHistoryTime(trade.trade_closed_at);
+            
+            html += `<tr onclick="openHistoryModal(${idx})">
+                <td>
+                    <div style="font-weight:600;font-size:13px;">${trade.ticker}</div>
+                    <div style="font-size:10px;color:var(--text-secondary);">${trade.trade_direction || ''}</div>
+                </td>
+                <td>
+                    <div style="font-weight:500;">${trade.human_signal || trade.signal_type || '—'}</div>
+                    <div style="font-size:10px;color:var(--text-secondary);">Riesgo/Beneficio: ${trade.risk_reward_ratio || '—'}</div>
+                </td>
+                <td>${resDisplay}</td>
+                <td style="font-family:var(--font-mono); font-weight:600; color:${pnlColor};">${pnlStr}</td>
+                <td>
+                    <div style="font-family:var(--font-mono);font-size:11px;">Ent: ${entry}</div>
+                    <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-secondary);">TP: ${tp} | SL: ${sl}</div>
+                </td>
+                <td style="font-family:var(--font-mono);">${durationStr}</td>
+                <td>
+                    <div style="font-size:11px;">Apertura: ${detectedDate}</div>
+                    <div style="font-size:11px;color:var(--text-secondary);">Cierre: ${closedDate}</div>
+                </td>
+            </tr>`;
+        });
+        
+        tbody.innerHTML = html;
     }
 
     // ── WebSocket: Realtime from Go ───────────────────────────────────────
@@ -2503,6 +2706,68 @@
             currentChartRo.disconnect();
             currentChartRo = null;
         }
+    }
+
+    function openHistoryModal(idx) {
+        const item = historyData[idx];
+        if (!item) return;
+        
+        const overlay = document.getElementById('modal-overlay');
+        const body = document.getElementById('modal-body');
+        overlay.classList.add('active');
+        document.getElementById('modal-ticker').textContent = item.ticker;
+        document.getElementById('modal-subtitle').textContent = "Historial Simulado";
+        
+        let html = '<div class="modal-layout">';
+        
+        // 1. Timeline Block
+        const detectedTime = item.signal_detected_at ? formatTime(item.signal_detected_at) : '—';
+        const openedTime = item.trade_opened_at ? formatTime(item.trade_opened_at) : '—';
+        const closedTime = item.trade_closed_at ? formatTime(item.trade_closed_at) : '—';
+        
+        html += `<div class="estado-senal" style="grid-column:1/-1;">
+            <div class="estado-senal-title">⏱️ Timeline</div>
+            <div style="font-family:var(--font-mono); font-size:12px; line-height:1.8; color:var(--text-secondary); padding: 5px 0;">
+                <div>${detectedTime} &rarr; Señal detectada (${item.human_signal || item.signal_type})</div>`;
+        if (openedTime !== '—') {
+            html += `<div>${openedTime} &rarr; Entrada simulada ($${item.entry_price ? item.entry_price.toFixed(2) : '—'})</div>`;
+        }
+        
+        let exitStr = "Cierre";
+        if (item.exit_reason === "target hit") exitStr = "Objetivo alcanzado";
+        else if (item.exit_reason === "stop loss hit") exitStr = "Stop loss alcanzado";
+        else if (item.exit_reason === "time expired") exitStr = "Tiempo expirado";
+        else if (item.exit_reason) exitStr = item.exit_reason;
+        
+        if (closedTime !== '—') {
+            html += `<div>${closedTime} &rarr; ${exitStr}</div>`;
+        }
+        html += `</div></div>`;
+        
+        // 2. Strategy Block (mocking trade_plan structure)
+        const mockPlan = {
+            entry_price: item.entry_price,
+            direction: item.trade_direction,
+            stop_loss: item.stop_loss,
+            sl_pct: item.entry_price && item.stop_loss ? ((item.stop_loss - item.entry_price) / item.entry_price) * 100 : 0,
+            take_profit: item.take_profit,
+            tp_pct: item.entry_price && item.take_profit ? ((item.take_profit - item.entry_price) / item.entry_price) * 100 : 0,
+            risk_reward: item.risk_reward_ratio
+        };
+        html += buildTradePlan(mockPlan);
+        
+        // 3. Result Block (mocking trade_tracking structure)
+        const mockTracking = {
+            trade_status: item.trade_status,
+            pnl_percentage: item.pnl_percentage,
+            pnl_absolute: item.pnl_absolute,
+            trade_duration_seconds: item.trade_duration_seconds,
+            exit_reason: item.exit_reason
+        };
+        html += buildTradeTracking(mockTracking);
+        
+        html += '</div>'; // end modal-layout
+        body.innerHTML = html;
     }
 
     // ── Signal Lab ────────────────────────────────────────────────────────
