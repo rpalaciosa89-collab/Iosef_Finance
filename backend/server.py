@@ -23,6 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from signal_evaluation import evaluate_signals
 from strategy_optimizer import run_strategy_optimization
+import analytics
 from scoring import compute_signal_score
 from human_layer import translate_ticker, _detect_situation
 import persistence
@@ -1115,3 +1116,21 @@ def get_strategy_optimization(market: str = DEFAULT_MARKET):
         return {"cached": False, "market": market, "data": results}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error running strategy optimization: {str(e)}")
+
+@app.get("/api/analytics")
+def get_system_analytics():
+    """
+    Returns mathematical analytics over the SQLite dataset of closed trades.
+    Cached for 5 minutes (300 seconds) to prevent heavy DB load.
+    """
+    cache_key = "system:analytics"
+    cached = redis_get(cache_key)
+    if cached:
+        return {"cached": True, "data": cached}
+        
+    try:
+        data = analytics.build_analytics_payload()
+        redis_set(cache_key, data, 300)
+        return {"cached": False, "data": data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating analytics: {str(e)}")
