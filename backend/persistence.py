@@ -1,7 +1,7 @@
 import sqlite3
 import os
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, List
 from datetime import datetime, timezone
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "trades_history.db")
@@ -43,6 +43,7 @@ def init_db():
             decision_clarity TEXT,
             suggested_action TEXT,
             holding_period TEXT,
+            system_version TEXT DEFAULT 'v2.0_signal_driven',
             PRIMARY KEY (ticker, signal_detected_at)
         )
     """)
@@ -138,7 +139,7 @@ def save_closed_trade(data: Dict[str, Any]):
             trade_direction, trade_status, trade_result,
             pnl_percentage, pnl_absolute, trade_duration_seconds,
             exit_reason, signal_invalid_reason, confidence_text,
-            decision_clarity, suggested_action, holding_period
+            decision_clarity, suggested_action, holding_period, system_version
         ) VALUES (
             :ticker, :market, :signal_type, :human_signal, :score_at_detection,
             :signal_detected_at, :trade_opened_at, :trade_closed_at,
@@ -148,7 +149,7 @@ def save_closed_trade(data: Dict[str, Any]):
             :trade_direction, :trade_status, :trade_result,
             :pnl_percentage, :pnl_absolute, :trade_duration_seconds,
             :exit_reason, :signal_invalid_reason, :confidence_text,
-            :decision_clarity, :suggested_action, :holding_period
+            :decision_clarity, :suggested_action, :holding_period, :system_version
         )
     """
     
@@ -159,7 +160,7 @@ def save_closed_trade(data: Dict[str, Any]):
         "risk_reward_ratio", "trade_direction", "trade_status", "trade_result",
         "pnl_percentage", "pnl_absolute", "trade_duration_seconds",
         "exit_reason", "signal_invalid_reason", "confidence_text",
-        "decision_clarity", "suggested_action", "holding_period"
+        "decision_clarity", "suggested_action", "holding_period", "system_version"
     ]
     
     params = {field: data.get(field) for field in fields}
@@ -170,6 +171,8 @@ def save_closed_trade(data: Dict[str, Any]):
     params["signal_detected_at"] = norm_detected
     params["trade_opened_at"] = norm_opened
     params["trade_closed_at"] = norm_closed
+    if not params.get("system_version"):
+        params["system_version"] = "v2.0_signal_driven"
     
     try:
         cursor.execute(query, params)
@@ -181,7 +184,7 @@ def save_closed_trade(data: Dict[str, Any]):
     finally:
         conn.close()
 
-def get_history(limit: int = 100, offset: int = 0) -> list:
+def get_closed_trades_history(limit: int = 50, offset: int = 0, include_legacy: bool = False) -> List[Dict[str, Any]]:
     """
     Retrieves the history of closed trades, ordered by closed time descending.
     PART 2 — FILTRO EN GET /api/history (excluye registros incompletos o de prueba).
@@ -190,7 +193,9 @@ def get_history(limit: int = 100, offset: int = 0) -> list:
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
     
-    query = """
+    legacy_filter = "" if include_legacy else "AND system_version != 'v1.0_legacy'"
+
+    query = f"""
         SELECT * FROM trades 
         WHERE ticker IS NOT NULL AND ticker != 'TEST'
           AND entry_price IS NOT NULL AND entry_price > 0
@@ -198,6 +203,7 @@ def get_history(limit: int = 100, offset: int = 0) -> list:
           AND take_profit IS NOT NULL AND take_profit > 0
           AND trade_opened_at IS NOT NULL AND trade_opened_at != ''
           AND trade_closed_at IS NOT NULL AND trade_closed_at != ''
+          {legacy_filter}
         ORDER BY trade_closed_at DESC 
         LIMIT ? OFFSET ?
     """

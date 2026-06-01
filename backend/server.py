@@ -235,15 +235,16 @@ def _generate_trade_plan(situation: str, entry_price: float) -> dict:
 
     return plan
 
-def _update_trade_simulation(state: dict, current_price: float, now: float):
-    """Monitors the trade simulation state in real time."""
+def _update_trade_simulation(state: dict, current_price: float, now: float, market_status: str):
     tracking = state.get("trade_tracking")
-    if not tracking:
+    if not tracking or tracking.get("trade_status") != "open":
         return
         
-    status = tracking.get("trade_status")
-    if status != "open":
-        return # already closed or pending (we only use pending -> open explicitly)
+    if market_status == "closed":
+        tracking["trading_paused"] = True
+        return
+    else:
+        tracking["trading_paused"] = False
         
     plan = state.get("trade_plan", {})
     if not plan:
@@ -296,14 +297,34 @@ def _update_trade_simulation(state: dict, current_price: float, now: float):
             tracking["trade_closed_at"] = now
             tracking["exit_reason"] = "stop loss hit"
             
-    # 2. Time Expiration (e.g. > 60 mins = 3600 seconds)
-    if tracking["trade_status"] == "open" and duration > 3600:
-        tracking["trade_status"] = "closed_expired"
-        tracking["trade_result"] = "expired"
+    # 2. Invalidation (Grace Period exceeded)
+    if tracking["trade_status"] == "open" and state.get("signal_expired"):
+        tracking["trade_status"] = "closed_invalidated"
+        tracking["trade_result"] = "expired"  # Mantenemos 'expired' o 'invalidated' para Analytics
         tracking["trade_closed_at"] = now
+        tracking["exit_reason"] = "signal invalidated"
+        
     state["trade_tracking"] = tracking
 
-def update_signal_lifecycle(ticker: str, strength_score: float, active_signals: list, current_price: float, ticker_entry: dict) -> dict:
+def _format_lifecycle_output(state: dict, now: float) -> dict:
+    age_seconds = int(now - state.get("signal_detected_at", now))
+    def format_ts(ts):
+        if not ts: return ""
+        return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+
+    return {
+        "signal_detected_at": format_ts(state.get("signal_detected_at")),
+        "signal_last_validated_at": format_ts(state.get("signal_last_validated_at")),
+        "signal_status": state.get("signal_status", ""),
+        "signal_age_seconds": age_seconds,
+        "entry_window_status": state.get("entry_window_status", ""),
+        "signal_expired": state.get("signal_expired", False),
+        "signal_invalid_reason": state.get("signal_invalid_reason", ""),
+        "trade_plan": state.get("trade_plan", {}),
+        "trade_tracking": state.get("trade_tracking", {})
+    }
+
+def update_signal_lifecycle(ticker: str, strength_score: float, active_signals: list, current_price: float, ticker_entry: dict, market_status: str, commit_new: bool = False) -> tuple[dict, bool]:
     key = f"lifecycle:{ticker}"
     cached = redis_get(key)
     now = time.time()
@@ -322,6 +343,7 @@ def update_signal_lifecycle(ticker: str, strength_score: float, active_signals: 
                 "entry_window_status": "open",
                 "signal_expired": False,
                 "signal_invalid_reason": "",
+                "missed_cycles": 0,
                 "trade_plan": trade_plan,
                 "trade_tracking": {
                     "trade_status": "open",
@@ -331,12 +353,14 @@ def update_signal_lifecycle(ticker: str, strength_score: float, active_signals: 
                     "pnl_percentage": 0.0,
                     "pnl_absolute": 0.0,
                     "trade_duration_seconds": 0,
-                    "exit_reason": ""
+                    "exit_reason": "",
+                    "trading_paused": market_status == "closed"
                 }
             }
-            redis_set(key, state, 7200) # 2 hours TTL
+            if commit_new:
+                redis_set(key, state, 7200) # 2 hours TTL
+            return _format_lifecycle_output(state, now), True
         else:
-            # No valid signal, and no cache. Return empty defaults.
             return {
                 "signal_detected_at": "",
                 "signal_last_validated_at": "",
@@ -345,7 +369,7 @@ def update_signal_lifecycle(ticker: str, strength_score: float, active_signals: 
                 "entry_window_status": "",
                 "signal_expired": False,
                 "signal_invalid_reason": "",
-            }
+            }, False
     else:
         # EXISTING SIGNAL
         state = cached
@@ -355,11 +379,11 @@ def update_signal_lifecycle(ticker: str, strength_score: float, active_signals: 
         
         if is_valid_signal:
             # Signal continues to be valid
+            state["missed_cycles"] = 0
             state["signal_last_validated_at"] = now
             state["signal_expired"] = False
             state["signal_invalid_reason"] = ""
             
-            # Status based on age and score drops
             if age < 300: # 5 minutes
                 state["signal_status"] = "new"
             else:
@@ -368,9 +392,7 @@ def update_signal_lifecycle(ticker: str, strength_score: float, active_signals: 
                 else:
                     state["signal_status"] = "active"
                     
-            # Window status based on absolute percentage deviation
             dev = abs(current_price - detection_price) / (detection_price if detection_price > 0 else 1) * 100
-            
             if dev < 1.0:
                 state["entry_window_status"] = "open"
             elif dev < 3.0:
@@ -378,44 +400,25 @@ def update_signal_lifecycle(ticker: str, strength_score: float, active_signals: 
             else:
                 state["entry_window_status"] = "late"
                 
-            redis_set(key, state, 7200) # Keep refreshing TTL while active
+            redis_set(key, state, 7200)
         else:
-            # SIGNAL NO LONGER VALID (EXPIRED)
-            if not state.get("signal_expired"):
-                state["signal_status"] = "expired"
-                state["entry_window_status"] = "closed"
-                state["signal_expired"] = True
-                state["signal_invalid_reason"] = "La condición técnica ya no sigue activa o perdió fuerza."
-                state["signal_last_validated_at"] = now
-                # Update redis one last time with 2 hours TTL so it expires naturally
-                redis_set(key, state, 7200)
+            # SIGNAL NO LONGER VALID (Grace period check)
+            if market_status != "closed":
+                missed_cycles = state.get("missed_cycles", 0) + 1
+                state["missed_cycles"] = missed_cycles
+                
+                if missed_cycles >= 3 and not state.get("signal_expired"):
+                    state["signal_status"] = "expired"
+                    state["entry_window_status"] = "closed"
+                    state["signal_expired"] = True
+                    state["signal_invalid_reason"] = "La señal técnica desapareció por 3 ciclos consecutivos."
+                    state["signal_last_validated_at"] = now
 
         # Run tracking update regardless of valid signal (to close out if needed)
-        _update_trade_simulation(state, current_price, now)
-        # We need to save the state again if tracking modified it. We do this for active signals above,
-        # but if expired, we should save tracking changes. Let's do a uniform save:
-        if not is_valid_signal:
-            redis_set(key, state, 7200)
+        _update_trade_simulation(state, current_price, now, market_status)
+        redis_set(key, state, 7200)
     
-    # Format output fields
-    age_seconds = int(now - state.get("signal_detected_at", now))
-    
-    # Format ISO times for frontend
-    def format_ts(ts):
-        if not ts: return ""
-        return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
-
-    return {
-        "signal_detected_at": format_ts(state.get("signal_detected_at")),
-        "signal_last_validated_at": format_ts(state.get("signal_last_validated_at")),
-        "signal_status": state.get("signal_status", ""),
-        "signal_age_seconds": age_seconds,
-        "entry_window_status": state.get("entry_window_status", ""),
-        "signal_expired": state.get("signal_expired", False),
-        "signal_invalid_reason": state.get("signal_invalid_reason", ""),
-        "trade_plan": state.get("trade_plan", {}),
-        "trade_tracking": state.get("trade_tracking", {})
-    }
+        return _format_lifecycle_output(state, now), False
 
 # ---------------------------------------------------------------------------
 # Sector / Industry background sync
@@ -496,6 +499,11 @@ async def background_sector_sync():
 # Condition 3: sector/industry fetched from in-memory cache, defaults to null/Unknown
 # Condition 7: breakout as internal signal (ma_breakout_signal), not absolute truth
 # ---------------------------------------------------------------------------
+def _check_market_hours(market: str) -> dict:
+    # TODO: Implement actual market hours logic per market.
+    # For now, default to "open" so tracking works.
+    return {"state": "open"}
+
 def run_scan(market: str = DEFAULT_MARKET) -> tuple[list, list]:
     tickers = MARKET_TICKERS.get(market, MARKET_TICKERS[DEFAULT_MARKET])
     data = yf.download(tickers, period="1y", progress=False)
@@ -507,6 +515,7 @@ def run_scan(market: str = DEFAULT_MARKET) -> tuple[list, list]:
     volumes = data["Volume"]
     results = []
     alerts = []
+    new_candidates = []
 
     # --- Pre-calculate Market Breadth ---
     # We do this before iterating over tickers to have context ready.
@@ -692,19 +701,42 @@ def run_scan(market: str = DEFAULT_MARKET) -> tuple[list, list]:
             "industry":          industry,
         }
         
-        # --- Signal Lifecycle Engine ---
-        lifecycle_fields = update_signal_lifecycle(ticker, strength_score, active_signals, latest_close, ticker_entry)
-        ticker_entry.update(lifecycle_fields)
         # --- Human Layer: translate to plain language ---
         human_fields = translate_ticker(ticker_entry, opt_cache)
         ticker_entry.update(human_fields)
         
-        # --- Persistence Layer ---
-        tracking = ticker_entry.get("trade_tracking", {})
-        if tracking.get("trade_status", "").startswith("closed_"):
-            persistence.save_closed_trade(_flatten_trade_data(ticker_entry, market))
+        # --- Signal Lifecycle Engine ---
+        # First pass: we evaluate all, update existing, and mark new candidates
+        market_hours = _check_market_hours(market)
+        market_status = market_hours["state"]
+        
+        lifecycle_fields, is_new = update_signal_lifecycle(ticker, strength_score, active_signals, latest_close, ticker_entry, market_status, commit_new=False)
+        ticker_entry.update(lifecycle_fields)
+        
+        if is_new:
+            # TOP OPPORTUNITIES BASE FILTER
+            if strength_score >= 60.0 and ticker_entry.get("decision_clarity") != "baja":
+                # Check for contradictory context
+                plan_dir = ticker_entry.get("trade_plan", {}).get("direction", "LONG")
+                contradiction = False
+                if plan_dir == "LONG" and current_context == "bearish":
+                    contradiction = True
+                elif plan_dir == "SHORT" and current_context == "bullish":
+                    contradiction = True
+                
+                # Exclude weak/ambiguous signal types
+                sig_type = active_signals[0] if active_signals else ""
+                weak_types = ["rsi_oversold_weak", "weak_trend", "consolidation"]
+                if not contradiction and not any(wt in sig_type for wt in weak_types):
+                    new_candidates.append(ticker_entry)
+        else:
+            # Append existing trades to results immediately
+            results.append(ticker_entry)
             
-        results.append(ticker_entry)
+            # --- Persistence Layer for EXISTING trades ---
+            tracking = ticker_entry.get("trade_tracking", {})
+            if tracking.get("trade_status", "").startswith("closed_"):
+                persistence.save_closed_trade(_flatten_trade_data(ticker_entry, market))
 
         # --- Alerts Generation ---
         # 1. Breakout
@@ -729,6 +761,47 @@ def run_scan(market: str = DEFAULT_MARKET) -> tuple[list, list]:
             alerts.append({"ticker": ticker, "type": "momentum_shift", "message": f"Strong move up (+{pct_change:.1f}%)", "strength": "high", "color": "green"})
         elif pct_change < -3.0:
             alerts.append({"ticker": ticker, "type": "momentum_shift", "message": f"Strong move down ({pct_change:.1f}%)", "strength": "high", "color": "red"})
+
+    # --- Top Opportunities Selection ---
+    # Sort candidates by total quality (score)
+    new_candidates.sort(key=lambda x: x.get("signal_strength_score", 0), reverse=True)
+    top_candidates = new_candidates[:3] # TOP 3 per market
+    
+    # Commit the top candidates to Redis
+    for cand in top_candidates:
+        # Re-run update_signal_lifecycle with commit_new=True
+        # We need the active signals list, let's just extract it or mock it since it's already generated
+        # Actually it's easier to just redis_set directly!
+        key = f"lifecycle:{cand['ticker']}"
+        state = {
+            "signal_detected_at": cand.get("signal_detected_at"),
+            "signal_last_validated_at": cand.get("signal_last_validated_at"),
+            "signal_status": cand.get("signal_status"),
+            "detection_price": cand.get("price"),
+            "entry_window_status": cand.get("entry_window_status"),
+            "signal_expired": cand.get("signal_expired"),
+            "signal_invalid_reason": cand.get("signal_invalid_reason"),
+            "missed_cycles": 0,
+            "trade_plan": cand.get("trade_plan"),
+            "trade_tracking": cand.get("trade_tracking")
+        }
+        # Parse ISO timestamps back to float for Redis storage
+        def parse_ts(ts_str):
+            if not ts_str: return time.time()
+            try:
+                return datetime.fromisoformat(ts_str).timestamp()
+            except:
+                return time.time()
+                
+        state["signal_detected_at"] = parse_ts(cand.get("signal_detected_at"))
+        state["signal_last_validated_at"] = parse_ts(cand.get("signal_last_validated_at"))
+        if "trade_tracking" in state and "trade_opened_at" in state["trade_tracking"]:
+             # trade_opened_at is stored as float in Redis
+             if isinstance(state["trade_tracking"]["trade_opened_at"], str):
+                 state["trade_tracking"]["trade_opened_at"] = parse_ts(state["trade_tracking"]["trade_opened_at"])
+                 
+        redis_set(key, state, 7200)
+        results.append(cand)
 
     # 5. Market Context was pre-calculated at the beginning of the function
     return results, alerts
@@ -877,7 +950,7 @@ def get_top(market: str = DEFAULT_MARKET):
 @app.get("/api/history")
 def get_history(limit: int = 100, offset: int = 0):
     """Endpoint to list persisted trades."""
-    return {"data": persistence.get_history(limit, offset)}
+    return {"data": persistence.get_closed_trades_history(limit, offset)}
 
 @app.get("/api/ticker/{ticker}")
 def get_ticker_detail(ticker: str):

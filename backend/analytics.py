@@ -50,6 +50,7 @@ def get_signal_analytics():
             AVG(trade_duration_seconds) as avg_duration
         FROM trades
         WHERE trade_result IN ('win', 'loss', 'expired')
+          AND system_version != 'v1.0_legacy'
         GROUP BY signal_type
         ORDER BY total_trades DESC
     """)
@@ -75,6 +76,7 @@ def get_asset_analytics():
             AVG(trade_duration_seconds) as avg_duration
         FROM trades
         WHERE trade_result IN ('win', 'loss', 'expired')
+          AND system_version != 'v1.0_legacy'
         GROUP BY ticker
         HAVING total_trades >= 5
         ORDER BY total_trades DESC
@@ -101,6 +103,7 @@ def get_context_analytics():
             AVG(trade_duration_seconds) as avg_duration
         FROM trades
         WHERE trade_result IN ('win', 'loss', 'expired')
+          AND system_version != 'v1.0_legacy'
         GROUP BY market_context_used
         ORDER BY total_trades DESC
     """)
