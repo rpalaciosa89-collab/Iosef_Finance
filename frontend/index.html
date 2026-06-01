@@ -1117,7 +1117,9 @@
            HUMAN LAYER — filter-pro (hide technical filters in Simple Mode)
            ================================================================ */
         body.mode-simple .filter-pro { display: none !important; }
-
+        .simple-only { display: none; }
+        body.mode-simple .simple-only { display: flex; flex-direction: column; margin-right: auto; }
+        body.mode-simple .filter-count { display: none !important; }
         /* ================================================================
            HUMAN LAYER — pro-only-block (hide technical modal sections)
            ================================================================ */
@@ -1155,49 +1157,220 @@
         }
 
         /* ================================================================
-           SIMPLE MODE — Signal Lab human cards
+           SIGNAL INTELLIGENCE LAB 2.0 — CSS
            ================================================================ */
-        .simple-signal-card {
+        .sil-universe-header {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            padding: 14px 20px;
+            background: var(--bg-1);
+            border-bottom: 1px solid var(--border);
+        }
+        .sil-universe-stat {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .sil-universe-stat .label {
+            font-size: 9px;
+            text-transform: uppercase;
+            color: var(--text-tertiary);
+            font-weight: 600;
+            letter-spacing: 0.05em;
+        }
+        .sil-universe-stat .value {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text-primary);
+            font-family: var(--font-mono);
+        }
+
+        /* Evidence Card */
+        .sil-card {
             background: var(--bg-1);
             border: 1px solid var(--border);
             border-radius: var(--radius);
-            padding: 18px 20px;
+            padding: 20px;
             display: flex;
             flex-direction: column;
-            gap: 14px;
+            gap: 16px;
+            transition: border-color 0.2s;
         }
-        .simple-signal-card.top-signal-card {
+        .sil-card:hover { border-color: var(--text-tertiary); }
+        .sil-card.sil-top {
             border-color: var(--amber);
-            box-shadow: 0 0 12px rgba(245,158,11,0.12);
+            box-shadow: 0 0 14px rgba(245,158,11,0.10);
         }
-        .simple-signal-name {
+        .sil-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 12px;
+        }
+        .sil-signal-name {
             font-size: 15px;
             font-weight: 700;
             color: var(--text-primary);
+            line-height: 1.3;
         }
-        .semaphore-badge {
+
+        /* Sample quality badge */
+        .sil-sample-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+        .sil-sample-sufficient   { background: rgba(0,200,150,0.12); color: #00c896; border: 1px solid rgba(0,200,150,0.25); }
+        .sil-sample-limited      { background: rgba(245,158,11,0.12); color: #fbbf24; border: 1px solid rgba(245,158,11,0.25); }
+        .sil-sample-insufficient { background: rgba(255,71,87,0.12); color: #f87171; border: 1px solid rgba(255,71,87,0.25); }
+
+        /* Metrics grid inside card */
+        .sil-metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 10px;
+        }
+        .sil-metric {
+            background: var(--bg-0);
+            border-radius: 6px;
+            padding: 10px 12px;
+            text-align: center;
+        }
+        .sil-metric .label {
+            font-size: 9px;
+            text-transform: uppercase;
+            color: var(--text-tertiary);
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+        .sil-metric .value {
+            font-size: 16px;
+            font-weight: 800;
+            font-family: var(--font-mono);
+        }
+        .sil-metric .value.positive { color: var(--green); }
+        .sil-metric .value.negative { color: var(--red); }
+        .sil-metric .value.neutral  { color: var(--text-primary); }
+
+        /* Context section */
+        .sil-context {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .sil-context-title {
+            font-size: 10px;
+            text-transform: uppercase;
+            color: var(--text-tertiary);
+            font-weight: 700;
+            letter-spacing: 0.04em;
+        }
+        .sil-context-rows {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .sil-context-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            padding: 5px 10px;
+            background: var(--bg-0);
+            border-radius: 4px;
+        }
+        .sil-context-row .ctx-label {
+            width: 70px;
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+        .sil-context-row .ctx-bar-bg {
+            flex: 1;
+            height: 5px;
+            background: rgba(255,255,255,0.06);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        .sil-context-row .ctx-bar-fill {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 0.5s;
+        }
+        .sil-context-row .ctx-val {
+            font-family: var(--font-mono);
+            font-weight: 700;
+            font-size: 11px;
+            width: 36px;
+            text-align: right;
+        }
+        .sil-context-row .ctx-count {
+            font-size: 10px;
+            color: var(--text-tertiary);
+            width: 45px;
+            text-align: right;
+        }
+        .sil-best-tag { color: var(--green); font-size: 10px; font-weight: 700; }
+        .sil-worst-tag { color: var(--red); font-size: 10px; font-weight: 700; }
+
+        /* Ticker lists */
+        .sil-tickers {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .sil-tickers-title {
+            font-size: 10px;
+            text-transform: uppercase;
+            color: var(--text-tertiary);
+            font-weight: 700;
+            letter-spacing: 0.04em;
+        }
+        .sil-ticker-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        .sil-ticker-chip {
             display: inline-flex;
             align-items: center;
             gap: 6px;
-            padding: 4px 12px;
-            border-radius: 20px;
+            padding: 4px 10px;
+            border-radius: 6px;
             font-size: 11px;
-            font-weight: 700;
-            letter-spacing: 0.04em;
-            white-space: nowrap;
+            font-family: var(--font-mono);
+            border: 1px solid var(--border);
+            background: var(--bg-0);
         }
-        .semaphore-green  { background: rgba(0,200,150,0.15);  color: #00c896; border: 1px solid rgba(0,200,150,0.3); }
-        .semaphore-yellow { background: rgba(245,158,11,0.15); color: #fbbf24; border: 1px solid rgba(245,158,11,0.3); }
-        .semaphore-red    { background: rgba(255,71,87,0.15);  color: #f87171; border: 1px solid rgba(255,71,87,0.3); }
-        .simple-win-text {
-            font-size: 13px;
+        .sil-ticker-chip .t-name { font-weight: 700; color: var(--text-primary); }
+        .sil-ticker-chip .t-wr { font-weight: 600; }
+        .sil-ticker-chip .t-count { color: var(--text-tertiary); font-size: 10px; }
+        .sil-ticker-chip .t-warn { color: var(--amber); font-size: 9px; }
+        .sil-chip-good .t-wr { color: var(--green); }
+        .sil-chip-bad  .t-wr { color: var(--red); }
+
+        /* Conclusion */
+        .sil-conclusion {
+            font-size: 12px;
             color: var(--text-secondary);
-            line-height: 1.5;
+            line-height: 1.6;
+            padding: 12px 14px;
+            background: var(--bg-0);
+            border-left: 3px solid var(--blue);
+            border-radius: 0 6px 6px 0;
         }
-        .simple-win-text strong { color: var(--text-primary); }
-        .simple-horizon {
-            font-size: 11px;
-            color: var(--text-tertiary);
+        .sil-conclusion strong { color: var(--text-primary); }
+
+        /* Pro-mode: win rate bars (reuse existing metric-row) */
+        .sil-wr-bars {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
         }
     </style>
 </head>
@@ -1261,11 +1434,11 @@
                         <option value="europe">Europe Top</option>
                     </select>
                 </div>
-                <div class="filter-group">
+                <div class="filter-group filter-pro">
                     <label>Ticker</label>
                     <input type="text" id="f-ticker" placeholder="Search…">
                 </div>
-                <div class="filter-group">
+                <div class="filter-group filter-pro">
                     <label>Sector</label>
                     <select id="f-sector"><option value="all">All</option></select>
                 </div>
@@ -1299,7 +1472,10 @@
                     <button id="btn-strategy-lab" class="btn-primary filter-pro" style="background:var(--purple)">⚙️ STRATEGY LAB</button>
                     <button id="btn-signal-lab" class="btn-primary">🔬 SIGNAL LAB</button>
                 </div>
-                <span class="simple-hint-bar" style="font-weight: 600; color: var(--green);">🔥 TOP OPORTUNIDADES (Top 3 por Mercado)</span>
+                <div class="simple-only">
+                    <h2 style="margin: 0; font-size: 1.2rem; color: var(--green);">🔥 TOP OPORTUNIDADES REALES</h2>
+                    <p style="margin: 2px 0 0 0; font-size: 0.85rem; color: var(--text-secondary);">Las mejores oportunidades operables del momento</p>
+                </div>
                 <span class="filter-count" id="filter-count"></span>
             </div>
 
@@ -2066,7 +2242,16 @@
             }
         });
 
-        const rows = filteredData.map(t => {
+        let displayData = filteredData;
+        if (viewMode === 'simple') {
+            displayData = filteredData.filter(t => {
+                const pScore = t.signal_strength_score != null ? t.signal_strength_score : 0;
+                const clarity = t.decision_clarity || 'baja';
+                return pScore >= 60 && clarity !== 'baja';
+            }).slice(0, 3);
+        }
+
+        const rows = displayData.map(t => {
             const chgCls = t.change_pct >= 0 ? 'positive' : 'negative';
             const chgSign = t.change_pct >= 0 ? '+' : '';
             const momCls = t.momentum_1m >= 0 ? 'positive' : 'negative';
@@ -3004,41 +3189,28 @@
         body.innerHTML = html;
     }
 
-    // ── Signal Lab ────────────────────────────────────────────────────────
+    // ── Signal Intelligence Lab 2.0 ────────────────────────────────────
     async function openSignalLab() {
         const overlay = document.getElementById('signal-lab-overlay');
         overlay.classList.add('active');
 
-        // Update header and description based on current mode
+        // Update header based on mode
         const titleEl = document.getElementById('signal-lab-title');
-        const descEl  = document.getElementById('signal-lab-desc');
         if (titleEl) {
-            if (viewMode === 'simple') {
-                titleEl.innerHTML = '<span class="icon">📊</span> PROBABILIDADES HISTÓRICAS DE SEÑALES';
-                if (descEl) descEl.innerHTML = `
-                    <strong>¿Qué es esto?</strong> Estas son las señales que el sistema monitorea.
-                    Las marcadas con 🏆 tienen el mejor historial de resultados en los últimos 2 años.
-                    <br><em>El porcentaje indica con qué frecuencia la señal ha sido correcta en el pasado. No garantiza resultados futuros.</em>
-                `;
-            } else {
-                titleEl.innerHTML = '<span class="icon">🔬</span> SIGNAL LAB — HISTORICAL PROBABILITIES';
-                if (descEl) descEl.innerHTML = `
-                    Empirical probabilities based on 2-year historical backtesting. Returns are measured over forward-looking horizons.
-                    <strong>Market Context:</strong> Bullish = Breadth &gt; 60%, Bearish = Breadth &lt; 40%.
-                    <em>Past performance does not guarantee future results.</em>
-                `;
-            }
+            titleEl.innerHTML = viewMode === 'simple'
+                ? '<span class="icon">🔬</span> SIGNAL INTELLIGENCE LAB'
+                : '<span class="icon">🔬</span> SIGNAL INTELLIGENCE LAB — EVIDENCE DASHBOARD';
         }
 
         const grid = document.getElementById('signal-lab-grid');
-        grid.innerHTML = '<div style="padding:20px;color:var(--text-secondary);text-align:center;">Evaluating historical signals...</div>';
-        
+        grid.innerHTML = '<div style="padding:40px;color:var(--text-secondary);text-align:center;">Analizando señales históricas del universo seleccionado…</div>';
+
         try {
             const res = await fetch(`${API}/signal-evaluation?market=${currentMarket}&_t=${Date.now()}`, { cache: 'no-store' });
             const json = await res.json();
             renderSignalLab(json.data);
         } catch (e) {
-            grid.innerHTML = `<div style="color:var(--red);padding:20px;">Failed to load evaluation data: ${e}</div>`;
+            grid.innerHTML = `<div style="color:var(--red);padding:20px;">Error al cargar evaluación de señales: ${e}</div>`;
         }
     }
 
@@ -3048,127 +3220,248 @@
 
     function renderSignalLab(data) {
         const grid = document.getElementById('signal-lab-grid');
-        if (!data || Object.keys(data).length === 0) {
-            grid.innerHTML = '<div style="padding:20px;color:var(--text-secondary);">No signal data available.</div>';
+        const descEl = document.getElementById('signal-lab-desc');
+
+        // Handle new structure: { universe: {...}, signals: {...} }
+        const universe = data?.universe || {};
+        const signals = data?.signals || data || {};
+
+        if (!signals || Object.keys(signals).length === 0) {
+            grid.innerHTML = '<div style="padding:20px;color:var(--text-secondary);">No hay datos de señales disponibles.</div>';
             return;
         }
 
-        // Human-readable signal name translations
+        // ── Universe Metadata Header ─────────────────────────────────────
+        const marketLabel = { nasdaq100: 'Nasdaq 100', sp500: 'S&P 500', europe: 'Europe Top' }[currentMarket] || currentMarket;
+        if (descEl) {
+            descEl.innerHTML = `
+                <div class="sil-universe-header">
+                    <div class="sil-universe-stat">
+                        <span class="label">Universo</span>
+                        <span class="value">${marketLabel}</span>
+                    </div>
+                    <div class="sil-universe-stat">
+                        <span class="label">Activos analizados</span>
+                        <span class="value">${universe.tickers || '—'}</span>
+                    </div>
+                    <div class="sil-universe-stat">
+                        <span class="label">Periodo</span>
+                        <span class="value">${universe.period || '2y'}</span>
+                    </div>
+                    <div class="sil-universe-stat">
+                        <span class="label">Muestra mín. por ticker</span>
+                        <span class="value">≥ ${universe.min_ticker_sample || 3} ocurrencias</span>
+                    </div>
+                    <div class="sil-universe-stat">
+                        <span class="label">Muestra suficiente</span>
+                        <span class="value">≥ ${universe.sample_sufficient_threshold || 40} señales</span>
+                    </div>
+                </div>
+                <div style="padding: 10px 20px; font-size: 11px; color: var(--text-tertiary); line-height: 1.5;">
+                    Probabilidades empíricas basadas en backtesting histórico. <strong>Contexto:</strong> Bullish = Breadth &gt; 60%, Bearish = Breadth &lt; 40%.
+                    <em>El rendimiento pasado no garantiza resultados futuros.</em>
+                </div>
+            `;
+        }
+
+        // Human-readable signal names
         const SIGNAL_NAMES = {
             oversold:             '🔻 Rebote desde sobreventa',
             overbought:           '🔺 Caída tras subida excesiva',
             ma_breakout_signal:   '⚡ Ruptura de media móvil',
-            momentum_shift_up:    '📈 Impulso comprador',
-            momentum_shift_down:  '📉 Impulso vendedor',
-            composite_score_high: '🎯 Señal compuesta fuerte',
+            breakout_up:          '📊 Cruce alcista SMA50',
+            breakdown_down:       '📉 Cruce bajista SMA50',
+            momentum_shift_up:    '📈 Impulso comprador fuerte',
+            momentum_shift_down:  '🔻 Impulso vendedor fuerte',
             high_volume:          '🔊 Volumen inusualmente alto',
+            breakout_vol_1_5:     '⚡📊 Cruce alcista + volumen',
+            breakout_bullish:     '⚡🟢 Cruce alcista en mercado fuerte',
+            high_vol_mom_2:       '🔊📈 Volumen alto + impulso',
+            oversold_bullish:     '🔻🟢 Sobreventa en mercado fuerte',
         };
 
-        // Sort entries by 5-day win rate descending
-        const sortedEntries = Object.entries(data).sort((a, b) => b[1].win_rate_5d - a[1].win_rate_5d);
+        const SIGNAL_DESCRIPTIONS = {
+            oversold:             'RSI cruza por debajo de 30, indicando posible rebote técnico.',
+            overbought:           'RSI cruza por encima de 70, indicando posible corrección.',
+            ma_breakout_signal:   'Precio cruza por encima de SMA50 o SMA200.',
+            breakout_up:          'Precio cruza al alza la SMA50.',
+            breakdown_down:       'Precio cruza a la baja la SMA50.',
+            momentum_shift_up:    'Movimiento diario superior al +3%.',
+            momentum_shift_down:  'Movimiento diario inferior al -3%.',
+            high_volume:          'Volumen supera 2x su media de 20 días.',
+            breakout_vol_1_5:     'Cruce alcista de SMA50 con volumen >1.5x.',
+            breakout_bullish:     'Cruce alcista de SMA50 cuando breadth > 60%.',
+            high_vol_mom_2:       'Volumen alto combinado con movimiento >+2%.',
+            oversold_bullish:     'Sobreventa (RSI<30) cuando breadth > 60%.',
+        };
+
+        // Sort by 5d win rate descending
+        const sortedEntries = Object.entries(signals).sort((a, b) => b[1].win_rate_5d - a[1].win_rate_5d);
 
         let html = '';
 
-        if (viewMode === 'simple') {
-            // ── MODO SIMPLE: tarjetas en lenguaje humano ─────────────────────
-            sortedEntries.forEach(([sigName, stats], index) => {
-                const isTopSignal = index < 3;
-                const humanName = SIGNAL_NAMES[sigName] || sigName.replace(/_/g, ' ');
-                const wr5  = (stats.win_rate_5d  * 100).toFixed(0);
-                const wr20 = (stats.win_rate_20d * 100).toFixed(0);
-
-                // Traffic-light semaphore based on 5-day win rate
-                let semClass = 'semaphore-red';
-                let semLabel = '🔴 Señal débil';
-                if (stats.win_rate_5d >= 0.60)      { semClass = 'semaphore-green';  semLabel = '🟢 Buena señal'; }
-                else if (stats.win_rate_5d >= 0.45)  { semClass = 'semaphore-yellow'; semLabel = '🟡 Señal moderada'; }
-
-                const bestHorizon = stats.win_rate_20d > stats.win_rate_5d
-                    ? '📅 Mejor a 2-4 semanas'
-                    : '⏱️ Mejor a 5-10 días';
-
-                html += `
-                    <div class="simple-signal-card ${isTopSignal ? 'top-signal-card' : ''}">
-                        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
-                            <div class="simple-signal-name">
-                                ${isTopSignal ? '<span title="Mejor historial" style="margin-right:4px;">🏆</span>' : ''}
-                                ${humanName}
-                            </div>
-                            <span class="semaphore-badge ${semClass}">${semLabel}</span>
-                        </div>
-                        <div class="simple-win-text">
-                            Históricamente esta señal funciona el <strong>${wr5}%</strong> de las veces en 5 días
-                            y el <strong>${wr20}%</strong> a 20 días.
-                        </div>
-                        <div class="simple-horizon">${bestHorizon} · ${stats.total_signals} ocurrencias en 2 años</div>
-                        <div class="signal-insight"><strong>¿Qué significa?</strong> ${stats.insight}</div>
-                    </div>
-                `;
-            });
-
-        } else {
-            // ── MODO PRO: vista técnica completa ─────────────────────────────
-            sortedEntries.forEach(([sigName, stats], index) => {
-                const confClass = 'conf-' + stats.confidence;
-                const confLabel = stats.confidence.replace('_', ' ');
-                const isTopSignal = index < 3;
-
-                const renderBar = (wr) => {
-                    const pct = (wr * 100).toFixed(0);
-                    const color = pct >= 60 ? 'bar-green' : (pct < 45 ? 'bar-red' : 'bar-amber');
-                    return `
-                        <div class="metric-row">
-                            <span class="metric-label">${wr === stats.win_rate_1d ? '1 Day' : (wr === stats.win_rate_5d ? '5 Days' : '20 Days')}</span>
-                            <div class="metric-bar-bg">
-                                <div class="metric-bar-fill ${color}" style="width: ${pct}%"></div>
-                            </div>
-                            <span class="metric-val">${pct}%</span>
-                        </div>
-                    `;
-                };
-
-                html += `
-                    <div class="signal-card ${isTopSignal ? 'top-signal-card' : ''}">
-                        <div class="signal-card-header">
-                            <div>
-                                <div class="signal-name">
-                                    ${isTopSignal ? '<span style="margin-right:4px;" title="Top Signal">🏆</span>' : ''}
-                                    ${sigName.replace(/_/g, ' ').toUpperCase()}
-                                </div>
-                                <div class="signal-count">${stats.total_signals} occurrences (2Y)</div>
-                            </div>
-                            <div class="confidence-badge ${confClass}">${confLabel}</div>
-                        </div>
-                        
-                        <div style="margin-top: 8px;">
-                            <div style="font-size:10px; color:var(--text-tertiary); margin-bottom:6px; text-transform:uppercase;">Win Rate</div>
-                            ${renderBar(stats.win_rate_1d)}
-                            ${renderBar(stats.win_rate_5d)}
-                            ${renderBar(stats.win_rate_20d)}
-                        </div>
-                        
-                        <div style="display:flex; justify-content:space-between; margin-top:10px; padding:10px; background:var(--bg-0); border-radius:4px;">
-                            <div style="text-align:center;">
-                                <div style="font-size:9px; color:var(--text-tertiary);">Avg Ret 5d</div>
-                                <div style="font-size:12px; font-family:var(--font-mono); color:${stats.avg_return_5d >= 0 ? 'var(--green)' : 'var(--red)'};">$${stats.avg_return_5d > 0 ? '+' : ''}${stats.avg_return_5d.toFixed(2)}%</div>
-                            </div>
-                            <div style="text-align:center; border-left:1px solid var(--border); padding-left:10px;">
-                                <div style="font-size:9px; color:var(--text-tertiary);">Bullish Ctx</div>
-                                <div style="font-size:12px; font-family:var(--font-mono);">${(stats.bullish_context_win_rate * 100).toFixed(0)}%</div>
-                            </div>
-                            <div style="text-align:center; border-left:1px solid var(--border); padding-left:10px;">
-                                <div style="font-size:9px; color:var(--text-tertiary);">Bearish Ctx</div>
-                                <div style="font-size:12px; font-family:var(--font-mono);">${(stats.bearish_context_win_rate * 100).toFixed(0)}%</div>
-                            </div>
-                        </div>
-                        
-                        <div class="signal-insight">
-                            <strong>Insight:</strong> ${stats.insight}
-                        </div>
-                    </div>
-                `;
-            });
+        // ── Helper: render sample badge ──────────────────────────────────
+        function sampleBadge(quality, count) {
+            const labels = {
+                sufficient:   '✅ Suficiente',
+                limited:      '⚠️ Limitada',
+                insufficient: '❌ Insuficiente'
+            };
+            return `<span class="sil-sample-badge sil-sample-${quality}">${count} señales · ${labels[quality] || quality}</span>`;
         }
+
+        // ── Helper: render context rows ──────────────────────────────────
+        function contextRows(ctx, bestCtx, worstCtx) {
+            if (!ctx || Object.keys(ctx).length === 0) return '<div style="font-size:11px;color:var(--text-tertiary);">Sin datos de contexto disponibles</div>';
+            const order = ['bullish', 'bearish', 'neutral'];
+            let rows = '';
+            order.forEach(k => {
+                const c = ctx[k];
+                if (!c) return;
+                const wr = (c.win_rate * 100).toFixed(0);
+                const barColor = wr >= 60 ? 'var(--green)' : wr < 45 ? 'var(--red)' : 'var(--amber)';
+                let tag = '';
+                if (k === bestCtx) tag = ' <span class="sil-best-tag">✅ MEJOR</span>';
+                if (k === worstCtx) tag = ' <span class="sil-worst-tag">⚠️ PEOR</span>';
+                const ctxLabel = k === 'bullish' ? 'Alcista' : k === 'bearish' ? 'Bajista' : 'Neutral';
+                rows += `
+                    <div class="sil-context-row">
+                        <span class="ctx-label">${ctxLabel}${tag}</span>
+                        <div class="ctx-bar-bg"><div class="ctx-bar-fill" style="width:${wr}%;background:${barColor}"></div></div>
+                        <span class="ctx-val">${wr}%</span>
+                        <span class="ctx-count">${c.count} ops</span>
+                    </div>
+                `;
+            });
+            return rows;
+        }
+
+        // ── Helper: render ticker chips ──────────────────────────────────
+        function tickerChips(tickers, type) {
+            if (!tickers || tickers.length === 0) return '<div style="font-size:11px;color:var(--text-tertiary);">Sin datos suficientes</div>';
+            return '<div class="sil-ticker-chips">' + tickers.map(t => {
+                const wr = (t.win_rate * 100).toFixed(0);
+                const chipClass = type === 'good' ? 'sil-chip-good' : 'sil-chip-bad';
+                const warn = t.sample_warning ? '<span class="t-warn">⚠️</span>' : '';
+                return `<span class="sil-ticker-chip ${chipClass}">
+                    <span class="t-name">${t.ticker}</span>
+                    <span class="t-wr">${wr}%</span>
+                    <span class="t-count">${t.count} ops</span>
+                    ${warn}
+                </span>`;
+            }).join('') + '</div>';
+        }
+
+        // ── Build cards ──────────────────────────────────────────────────
+        sortedEntries.forEach(([sigName, stats], index) => {
+            const isTop = index < 3;
+            const humanName = SIGNAL_NAMES[sigName] || sigName.replace(/_/g, ' ');
+            const description = SIGNAL_DESCRIPTIONS[sigName] || '';
+            const wr5 = (stats.win_rate_5d * 100).toFixed(0);
+            const avg5 = stats.avg_return_5d;
+            const quality = stats.sample_quality || 'insufficient';
+            const bestHorizon = stats.win_rate_20d > stats.win_rate_5d ? '2-4 semanas' : '5-10 días';
+
+            html += `<div class="sil-card ${isTop ? 'sil-top' : ''}">`;
+
+            // ── Header ───────────────────────────────────────────────────
+            html += `
+                <div class="sil-card-header">
+                    <div>
+                        <div class="sil-signal-name">
+                            ${isTop ? '<span title="Top Signal" style="margin-right:4px;">🏆</span>' : ''}
+                            ${humanName}
+                        </div>
+                        ${description ? `<div style="font-size:11px;color:var(--text-tertiary);margin-top:3px;">${description}</div>` : ''}
+                    </div>
+                    ${sampleBadge(quality, stats.total_signals)}
+                </div>
+            `;
+
+            // ── Core Metrics Grid ────────────────────────────────────────
+            const avg5Cls = avg5 > 0 ? 'positive' : avg5 < 0 ? 'negative' : 'neutral';
+            const avg5Sign = avg5 > 0 ? '+' : '';
+            html += `
+                <div class="sil-metrics">
+                    <div class="sil-metric">
+                        <div class="label">Win Rate 5D</div>
+                        <div class="value ${wr5 >= 60 ? 'positive' : wr5 < 45 ? 'negative' : 'neutral'}">${wr5}%</div>
+                    </div>
+                    <div class="sil-metric">
+                        <div class="label">PnL Medio 5D</div>
+                        <div class="value ${avg5Cls}">${avg5Sign}${avg5.toFixed(2)}%</div>
+                    </div>
+                    <div class="sil-metric">
+                        <div class="label">Horizonte Óptimo</div>
+                        <div class="value neutral" style="font-size:12px;">${bestHorizon}</div>
+                    </div>
+            `;
+
+            // Pro mode: add more metrics
+            if (viewMode === 'pro') {
+                const wr1 = (stats.win_rate_1d * 100).toFixed(0);
+                const wr20 = (stats.win_rate_20d * 100).toFixed(0);
+                const med5 = stats.median_return_5d || 0;
+                html += `
+                    <div class="sil-metric">
+                        <div class="label">Win Rate 1D</div>
+                        <div class="value ${wr1 >= 55 ? 'positive' : wr1 < 45 ? 'negative' : 'neutral'}">${wr1}%</div>
+                    </div>
+                    <div class="sil-metric">
+                        <div class="label">Win Rate 20D</div>
+                        <div class="value ${wr20 >= 55 ? 'positive' : wr20 < 45 ? 'negative' : 'neutral'}">${wr20}%</div>
+                    </div>
+                    <div class="sil-metric">
+                        <div class="label">Mediana 5D</div>
+                        <div class="value ${med5 >= 0 ? 'positive' : 'negative'}">${med5 > 0 ? '+' : ''}${med5.toFixed(2)}%</div>
+                    </div>
+                `;
+            }
+            html += '</div>'; // close sil-metrics
+
+            // ── Context Breakdown ────────────────────────────────────────
+            html += `
+                <div class="sil-context">
+                    <div class="sil-context-title">📊 Contexto de Mercado</div>
+                    <div class="sil-context-rows">
+                        ${contextRows(stats.context, stats.best_context, stats.worst_context)}
+                    </div>
+                </div>
+            `;
+
+            // ── Top Tickers ──────────────────────────────────────────────
+            if (stats.top_tickers && stats.top_tickers.length > 0) {
+                const maxShow = viewMode === 'simple' ? 3 : 5;
+                html += `
+                    <div class="sil-tickers">
+                        <div class="sil-tickers-title">📈 Donde funciona mejor</div>
+                        ${tickerChips(stats.top_tickers.slice(0, maxShow), 'good')}
+                    </div>
+                `;
+            }
+
+            // ── Worst Tickers ────────────────────────────────────────────
+            if (stats.worst_tickers && stats.worst_tickers.length > 0) {
+                html += `
+                    <div class="sil-tickers">
+                        <div class="sil-tickers-title">📉 Donde funciona peor</div>
+                        ${tickerChips(stats.worst_tickers, 'bad')}
+                    </div>
+                `;
+            }
+
+            // ── Conclusion ───────────────────────────────────────────────
+            if (stats.insight) {
+                html += `
+                    <div class="sil-conclusion">
+                        <strong>💡 Conclusión:</strong> ${stats.insight}
+                    </div>
+                `;
+            }
+
+            html += '</div>'; // close sil-card
+        });
+
         grid.innerHTML = html;
     }
 
