@@ -21,12 +21,12 @@ import yfinance as yf
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from signal_evaluation import evaluate_signals
-from strategy_optimizer import run_strategy_optimization
-import analytics
-from scoring import compute_signal_score
-from human_layer import translate_ticker, _detect_situation
-import persistence
+from app.services.signal_evaluation import evaluate_signals
+from app.services.strategy_optimizer import run_strategy_optimization
+from app.services import analytics
+from app.services.scoring import compute_signal_score
+from app.services.human_layer import translate_ticker, _detect_situation
+from app.services import persistence
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
@@ -133,6 +133,12 @@ def redis_set_no_expire(key: str, value) -> None:
     """Store without expiry (effectively persistent)."""
     try:
         r.set(key, json.dumps(value))
+    except redis.ConnectionError:
+        pass
+
+def redis_delete(key: str) -> None:
+    try:
+        r.delete(key)
     except redis.ConnectionError:
         pass
 
@@ -737,6 +743,7 @@ def run_scan(market: str = DEFAULT_MARKET) -> tuple[list, list]:
             tracking = ticker_entry.get("trade_tracking", {})
             if tracking.get("trade_status", "").startswith("closed_"):
                 persistence.save_closed_trade(_flatten_trade_data(ticker_entry, market))
+                redis_delete(f"lifecycle:{ticker}")
 
         # --- Alerts Generation ---
         # 1. Breakout

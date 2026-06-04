@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 from typing import Optional
-from scoring import get_confidence_label, compute_signal_score
+from app.services.scoring import get_confidence_label, compute_signal_score
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Helpers
