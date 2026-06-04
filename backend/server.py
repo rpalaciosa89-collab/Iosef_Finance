@@ -67,9 +67,10 @@ NASDAQ100_TICKERS = [
     "ORLY", "FTNT", "CSX",   "DASH", "DXCM", "MRVL", "NXPI", "ADSK", "ROP",  "PCAR",
     "CTAS", "ODFL", "CPRT",  "ADP",  "FANG", "KDP",  "ROST", "FAST", "MCHP", "KHC",
     "PAYX", "AEP",  "GEHC",  "VRSK", "EXC",  "IDXX", "EA",   "CTSH", "XEL",  "BIIB",
-    "ON",   "ZS",   "TTWO",  "DDOG", "ANSS", "CSGP", "GFS",  "CDW",  "ILMN", "MDB",
-    "WBD",  "TEAM", "CEG",   "BKR",  "LULU", "WDAY", "TTD",  "SPLK", "SIRI", "DLTR",
-    "ALGN", "ENPH", "LCID",  "RIVN", "ZM",   "OKTA", "WBA",  "JD",   "PDD",  "DKNG",
+    "ON",   "ZS",   "TTWO",  "DDOG", "CSGP", "CDW",  "ILMN", "MDB",
+    "WBD",  "TEAM", "CEG",   "BKR",  "LULU", "WDAY", "TTD",  "SIRI", "DLTR",
+    "ALGN", "ENPH", "LCID",  "RIVN", "ZM",   "OKTA", "JD",   "PDD",  "DKNG",
+    # Eliminados 2026-06-04 (delisted / sin datos en yfinance): SPLK, ANSS, WBA
 ]
 
 SP500_TICKERS = [
