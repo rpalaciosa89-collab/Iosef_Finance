@@ -10,6 +10,7 @@ import { ScreenerTable } from './components/ScreenerTable';
 import { SidePanel } from './components/SidePanel';
 import { StatusBar } from './components/StatusBar';
 import { TickerModal } from './components/TickerModal';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import type { TickerEntry } from './types/market';
 import './index.css';
 
@@ -82,12 +83,24 @@ export default function App() {
         wsStatus={wsStatus}
       />
 
-      {/* Ticker detail modal */}
+      {/* Ticker detail modal — wrapped in ErrorBoundary to prevent black screen crashes */}
       {selectedTicker && (
-        <TickerModal
-          ticker={selectedTicker}
-          onClose={() => setSelectedTicker(null)}
-        />
+        <ErrorBoundary
+          fallback={
+            <div className="modal-overlay active" id="ticker-modal-overlay" onClick={() => setSelectedTicker(null)}>
+              <div className="modal-box" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, minHeight: 200 }}>
+                <span style={{ fontSize: 28 }}>⚠️</span>
+                <strong style={{ color: 'var(--text-primary)' }}>Error al cargar el ticker</strong>
+                <button className="modal-close" style={{ position: 'static' }} onClick={() => setSelectedTicker(null)}>Cerrar</button>
+              </div>
+            </div>
+          }
+        >
+          <TickerModal
+            ticker={selectedTicker}
+            onClose={() => setSelectedTicker(null)}
+          />
+        </ErrorBoundary>
       )}
     </div>
   );

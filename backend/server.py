@@ -24,7 +24,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.services.signal_evaluation import evaluate_signals
 from app.services.strategy_optimizer import run_strategy_optimization
 from app.services import analytics
-from app.services.scoring import compute_signal_score
+from app.services.scoring import compute_signal_score, compute_ml_score
 from app.services.human_layer import translate_ticker, _detect_situation
 from app.services import persistence
 # ---------------------------------------------------------------------------
@@ -194,8 +194,19 @@ def _flatten_trade_data(ticker_entry: dict, market: str) -> dict:
         "holding_period": ticker_entry.get("holding_period", "")
     }
 
-def _generate_trade_plan(situation: str, entry_price: float) -> dict:
-    """Generate the heuristic Trade Plan based on signal situation."""
+def _compute_atr(close_series: pd.Series, high_series: pd.Series, low_series: pd.Series, period: int = 14) -> float:
+    """Average True Range (ATR) para sizing basado en volatilidad real."""
+    if len(close_series) < period + 1:
+        return 0.0
+    tr = pd.DataFrame({
+        'hl': high_series - low_series,
+        'hc': (high_series - close_series.shift(1)).abs(),
+        'lc': (low_series - close_series.shift(1)).abs()
+    }).max(axis=1)
+    return float(tr.ewm(span=period, adjust=False).mean().iloc[-1])
+
+def _generate_trade_plan(situation: str, entry_price: float, atr: float = 0.0) -> dict:
+    """Generate Trade Plan based on signal situation and ATR volatility."""
     if entry_price <= 0:
         return {}
 
@@ -209,36 +220,43 @@ def _generate_trade_plan(situation: str, entry_price: float) -> dict:
         "risk_reward": ""
     }
 
+    if atr <= 0:
+        atr = entry_price * 0.02 # fallback a 2%
+
+    atr_multiplier_sl = 1.5
+    atr_multiplier_tp = 3.0
+
     if situation == "oversold":
-        plan["sl_pct"] = -4.0
-        plan["tp_pct"] = 8.0
+        atr_multiplier_sl = 2.0
+        atr_multiplier_tp = 4.0
         plan["risk_reward"] = "1:2"
     elif situation in ("breakout_strong", "breakout_forming"):
-        plan["sl_pct"] = -3.0
-        plan["tp_pct"] = 9.0  # Optional: +8 or +9. Using 9 to make it 1:3 for strong breakouts as user noted. Or 8. Let's do 9.
+        atr_multiplier_sl = 1.5
+        atr_multiplier_tp = 4.5
         plan["risk_reward"] = "1:3"
     elif situation in ("momentum_up", "strong_trend"):
-        plan["sl_pct"] = -5.0
-        plan["tp_pct"] = 10.0
+        atr_multiplier_sl = 2.0
+        atr_multiplier_tp = 4.0
         plan["risk_reward"] = "1:2"
     elif situation in ("breakdown", "momentum_down", "overbought"):
-        # Bearish signals (SHORT)
         plan["direction"] = "SHORT"
-        plan["sl_pct"] = 3.0
-        plan["tp_pct"] = -6.0
+        atr_multiplier_sl = 1.5
+        atr_multiplier_tp = 3.0
         plan["risk_reward"] = "1:2"
     else:
-        # Default weak/no signal plan, shouldn't really be used but just in case
-        plan["sl_pct"] = -5.0
-        plan["tp_pct"] = 10.0
+        atr_multiplier_sl = 2.0
+        atr_multiplier_tp = 4.0
         plan["risk_reward"] = "1:2"
 
-    # Calculate absolute price levels
-    sl_mult = 1.0 + (plan["sl_pct"] / 100.0)
-    tp_mult = 1.0 + (plan["tp_pct"] / 100.0)
+    if plan["direction"] == "LONG":
+        plan["stop_loss"] = round(entry_price - (atr * atr_multiplier_sl), 2)
+        plan["take_profit"] = round(entry_price + (atr * atr_multiplier_tp), 2)
+    else:
+        plan["stop_loss"] = round(entry_price + (atr * atr_multiplier_sl), 2)
+        plan["take_profit"] = round(entry_price - (atr * atr_multiplier_tp), 2)
 
-    plan["stop_loss"] = round(entry_price * sl_mult, 2)
-    plan["take_profit"] = round(entry_price * tp_mult, 2)
+    plan["sl_pct"] = round(((plan["stop_loss"] - entry_price) / entry_price) * 100, 2)
+    plan["tp_pct"] = round(((plan["take_profit"] - entry_price) / entry_price) * 100, 2)
 
     return plan
 
@@ -331,7 +349,7 @@ def _format_lifecycle_output(state: dict, now: float) -> dict:
         "trade_tracking": state.get("trade_tracking", {})
     }
 
-def update_signal_lifecycle(ticker: str, strength_score: float, active_signals: list, current_price: float, ticker_entry: dict, market_status: str, commit_new: bool = False) -> tuple[dict, bool]:
+def update_signal_lifecycle(ticker: str, strength_score: float, active_signals: list, current_price: float, ticker_entry: dict, market_status: str, atr: float = 0.0, commit_new: bool = False) -> tuple[dict, bool]:
     key = f"lifecycle:{ticker}"
     cached = redis_get(key)
     now = time.time()
@@ -341,7 +359,7 @@ def update_signal_lifecycle(ticker: str, strength_score: float, active_signals: 
     
     if not cached:
         if is_valid_signal:
-            trade_plan = _generate_trade_plan(situation, current_price)
+            trade_plan = _generate_trade_plan(situation, current_price, atr)
             state = {
                 "signal_detected_at": now,
                 "signal_last_validated_at": now,
@@ -368,6 +386,7 @@ def update_signal_lifecycle(ticker: str, strength_score: float, active_signals: 
                 redis_set(key, state, 7200) # 2 hours TTL
             return _format_lifecycle_output(state, now), True
         else:
+            # No active signal — return null-safe skeleton so frontend never crashes
             return {
                 "signal_detected_at": "",
                 "signal_last_validated_at": "",
@@ -376,6 +395,26 @@ def update_signal_lifecycle(ticker: str, strength_score: float, active_signals: 
                 "entry_window_status": "",
                 "signal_expired": False,
                 "signal_invalid_reason": "",
+                "trade_plan": {
+                    "direction": "",
+                    "entry_price": 0.0,
+                    "stop_loss": 0.0,
+                    "take_profit": 0.0,
+                    "sl_pct": 0.0,
+                    "tp_pct": 0.0,
+                    "risk_reward": "N/A"
+                },
+                "trade_tracking": {
+                    "trade_status": "",
+                    "trade_opened_at": None,
+                    "trade_closed_at": None,
+                    "trade_result": "",
+                    "pnl_percentage": 0.0,
+                    "pnl_absolute": 0.0,
+                    "trade_duration_seconds": 0,
+                    "exit_reason": "",
+                    "trading_paused": False
+                }
             }, False
     else:
         # EXISTING SIGNAL
@@ -519,6 +558,8 @@ def run_scan(market: str = DEFAULT_MARKET) -> tuple[list, list]:
         return [], []
 
     closes  = data["Close"]
+    highs   = data["High"]
+    lows    = data["Low"]
     volumes = data["Volume"]
     results = []
     alerts = []
@@ -571,13 +612,20 @@ def run_scan(market: str = DEFAULT_MARKET) -> tuple[list, list]:
         latest_vol = float(volume_series.iloc[-1])
         rel_volume = latest_vol / avg_vol_20 if avg_vol_20 > 0 else 1.0
 
+        high_series = highs[ticker].dropna()
+        low_series  = lows[ticker].dropna()
+        atr = _compute_atr(close_series, high_series, low_series)
+
         # --- Composite Score ---
+        # Carlos Audit: score RSI is conditional to market context
         score = 0
         if latest_close > sma20:   score += 1
         if latest_close > sma50:   score += 2
         if latest_close > sma200:  score += 3
-        if rsi < 30:               score += 2   # oversold
-        elif rsi > 70:             score -= 2   # overbought
+        if rsi < 30 and current_context != "bearish":
+            score += 2   # oversold
+        elif rsi > 70 and current_context != "bullish":
+            score -= 2   # overbought
         if momentum > 0:           score += 2
         if rel_volume > 1.5:       score += 1
         if pct_change > 0:         score += 1
@@ -630,58 +678,19 @@ def run_scan(market: str = DEFAULT_MARKET) -> tuple[list, list]:
         if is_oversold and rel_volume > 1.5:
             active_signals.append("oversold__high_volume")
 
-        strength_score = 0.0
-        strength_source = "fallback"
-        best_adj = 0.0
+        # --- ML Inferencia (XGBoost) ---
+        features = {
+            'log_return': pct_change / 100.0 if pct_change else 0.0,
+            'volatility_20': atr / latest_close if latest_close > 0 else 0.0,
+            'momentum_10': momentum if momentum else 0.0,
+            'rsi_14': rsi if rsi else 50.0,
+            'macd_hist': ind.get("MACD_hist", 0.0) if ind else 0.0
+        }
         
-        if opt_cache and isinstance(opt_cache, dict):
-            ind_stats = opt_cache.get("individual_signals", {})
-            comb_stats = opt_cache.get("combined_signals", {})
-            max_score = 0.0
-            found_any = False
-            
-            for sig in active_signals:
-                if sig == "high_volume":
-                    continue
-                
-                stats = comb_stats.get(sig) if "__" in sig else ind_stats.get(sig)
-                if stats and isinstance(stats, dict):
-                    sig_score = compute_signal_score(stats)
-                    
-                    # Context adjustment
-                    base_wr = stats.get("win_rate_5d") or 0.0
-                    ctx_stats = stats.get("context", {}).get(current_context, {})
-                    ctx_wr = ctx_stats.get("win_rate_5d") if ctx_stats.get("win_rate_5d") is not None else base_wr
-                    
-                    adj = 0.0
-                    if ctx_wr > base_wr + 0.05:
-                        sig_score *= 1.15
-                        adj = 0.15
-                    elif ctx_wr < base_wr - 0.05:
-                        sig_score *= 0.85
-                        adj = -0.15
-                        
-                    sig_score = min(100.0, max(0.0, sig_score))
+        strength_score = compute_ml_score(features)
+        strength_source = "xgboost_ml"
+        best_adj = 0.0
 
-                    if sig_score > max_score:
-                        max_score = sig_score
-                        best_adj = adj
-                        found_any = True
-            if found_any:
-                strength_score = round(max_score, 1)
-                strength_source = "optimized"
-
-        if strength_source == "fallback":
-            fallback_val = (score * 5.0)
-            if ma_breakout_signal:
-                fallback_val += 30.0
-            if rel_volume > 1.5:
-                fallback_val += 15.0
-            if rsi < 30:
-                fallback_val += 15.0
-            elif rsi > 70:
-                fallback_val -= 15.0
-            strength_score = round(max(0.0, min(100.0, float(fallback_val))), 1)
 
         # --- Condition 3: sector/industry from in-memory cache, never blocks scan ---
         meta     = SECTOR_META_CACHE.get(ticker, {})
@@ -717,7 +726,7 @@ def run_scan(market: str = DEFAULT_MARKET) -> tuple[list, list]:
         market_hours = _check_market_hours(market)
         market_status = market_hours["state"]
         
-        lifecycle_fields, is_new = update_signal_lifecycle(ticker, strength_score, active_signals, latest_close, ticker_entry, market_status, commit_new=False)
+        lifecycle_fields, is_new = update_signal_lifecycle(ticker, strength_score, active_signals, latest_close, ticker_entry, market_status, atr=atr, commit_new=False)
         ticker_entry.update(lifecycle_fields)
         
         if is_new:
@@ -960,8 +969,10 @@ def get_history(limit: int = 100, offset: int = 0):
     """Endpoint to list persisted trades."""
     return {"data": persistence.get_closed_trades_history(limit, offset)}
 
+from fastapi import Path
+
 @app.get("/api/ticker/{ticker}")
-def get_ticker_detail(ticker: str):
+def get_ticker_detail(ticker: str = Path(..., pattern=r"^[A-Za-z0-9\.\-]{1,10}$")):
     ticker = ticker.upper()
     cache_key = f"ticker:{ticker}"
 
@@ -992,7 +1003,7 @@ def get_ticker_detail(ticker: str):
         raise HTTPException(status_code=404, detail=f"Ticker {ticker} not found: {e}")
 
 @app.get("/api/ticker/{ticker}/intraday")
-def get_ticker_intraday(ticker: str, period: str = "1d", interval: str = "1m"):
+def get_ticker_intraday(ticker: str = Path(..., pattern=r"^[A-Za-z0-9\.\-]{1,10}$"), period: str = "1d", interval: str = "1m"):
     ticker = ticker.upper()
     
     # Normalize timeframe inputs

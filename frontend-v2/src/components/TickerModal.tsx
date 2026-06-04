@@ -90,8 +90,10 @@ export function TickerModal({ ticker, onClose }: Props) {
       .finally(() => setLoading(false));
   }, [ticker.ticker, tf]);
 
-  const plan = ticker.trade_plan;
-  const tracking = ticker.trade_tracking;
+  // Null-safe guards: backend guarantees these keys, but we add defaults
+  // defensively to prevent React TypeError crashes (black screen bug).
+  const plan = ticker.trade_plan ?? { direction: '', entry_price: 0, stop_loss: 0, take_profit: 0, sl_pct: 0, tp_pct: 0, risk_reward: 'N/A' };
+  const tracking = ticker.trade_tracking ?? { trade_status: '', pnl_percentage: 0, trade_duration_seconds: 0 };
 
   return (
     <div className="modal-overlay active" id="ticker-modal-overlay" onClick={e => {
@@ -151,7 +153,7 @@ export function TickerModal({ ticker, onClose }: Props) {
               { label: 'Rel Volume', value: `${ticker.relative_volume.toFixed(2)}x` },
               { label: 'Momentum 1M', value: `${ticker.momentum_1m >= 0 ? '+' : ''}${ticker.momentum_1m.toFixed(2)}%`,
                 color: ticker.momentum_1m >= 0 ? 'var(--green)' : 'var(--red)' },
-              { label: 'Signal Score', value: `${ticker.signal_strength_score.toFixed(0)}/100` },
+              { label: 'Prob. P(Win)', value: `${ticker.signal_strength_score.toFixed(1)}%` },
               { label: 'Signal Status', value: ticker.signal_status?.toUpperCase() || '–' },
             ].map(({ label, value, color }) => (
               <div key={label} className="detail-card">
@@ -161,18 +163,18 @@ export function TickerModal({ ticker, onClose }: Props) {
             ))}
           </div>
 
-          {/* Trade Plan */}
+          {/* Trade Plan — only shown when a real trade plan exists */}
           {plan?.entry_price > 0 && (
             <div style={{ marginTop: 16, background: 'var(--bg-0)', border: '1px solid var(--border)', borderRadius: 6, padding: '14px 16px' }}>
               <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px', color: 'var(--text-tertiary)', marginBottom: 10 }}>
-                Trade Plan · {plan.direction}
+                Señal Predictiva · {plan.direction || 'N/A'}
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
                 {[
-                  { label: 'Entry', value: `$${plan.entry_price.toFixed(2)}` },
-                  { label: 'Stop Loss', value: `$${plan.stop_loss.toFixed(2)} (${plan.sl_pct.toFixed(1)}%)`, color: 'var(--red)' },
-                  { label: 'Take Profit', value: `$${plan.take_profit.toFixed(2)} (${plan.tp_pct > 0 ? '+' : ''}${plan.tp_pct.toFixed(1)}%)`, color: 'var(--green)' },
-                  { label: 'R/R Ratio', value: plan.risk_reward },
+                  { label: 'Entry', value: `$${(plan.entry_price ?? 0).toFixed(2)}` },
+                  { label: 'Stop Loss', value: `$${(plan.stop_loss ?? 0).toFixed(2)} (${(plan.sl_pct ?? 0).toFixed(1)}%)`, color: 'var(--red)' },
+                  { label: 'Take Profit', value: `$${(plan.take_profit ?? 0).toFixed(2)} (${(plan.tp_pct ?? 0) > 0 ? '+' : ''}${(plan.tp_pct ?? 0).toFixed(1)}%)`, color: 'var(--green)' },
+                  { label: 'R/R Ratio', value: plan.risk_reward ?? 'N/A' },
                 ].map(({ label, value, color }) => (
                   <div key={label} className="detail-card">
                     <div className="label">{label}</div>

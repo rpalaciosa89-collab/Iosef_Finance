@@ -1,3 +1,42 @@
+import joblib
+import logging
+import pandas as pd
+from pathlib import Path
+import xgboost as xgb
+
+logger = logging.getLogger(__name__)
+
+# Preload XGBoost model
+MODEL_PATH = Path(__file__).resolve().parent.parent.parent / "models" / "xgboost_signal_scorer.pkl"
+try:
+    xgb_model = joblib.load(MODEL_PATH)
+    logger.info("Modelo XGBoost cargado con éxito para inferencia.")
+except Exception as e:
+    logger.warning(f"No se pudo cargar el modelo XGBoost: {e}")
+    xgb_model = None
+
+def compute_ml_score(features: dict) -> float:
+    """
+    Inferencia de Machine Learning: Calcula P(Win) usando XGBoost.
+    """
+    if xgb_model is None:
+        return 50.0  # Fallback si no hay modelo
+        
+    try:
+        # Expected features: log_return, volatility_20, momentum_10, rsi_14, macd_hist
+        df = pd.DataFrame([features])
+        # Rellenar faltantes con 0 para evitar fallos si el dict viene incompleto
+        for col in ['log_return', 'volatility_20', 'momentum_10', 'rsi_14', 'macd_hist']:
+            if col not in df.columns:
+                df[col] = 0.0
+                
+        # Predict probability of class 1 (Success)
+        prob = xgb_model.predict_proba(df)[0, 1]
+        return round(prob * 100, 1) # Return as percentage 0-100
+    except Exception as e:
+        logger.error(f"Error en inferencia ML: {e}")
+        return 50.0
+
 def get_confidence_label(total: int, win_rate_5d: float, profit_factor: float, expectancy: float) -> str:
     """
     Determine the confidence label for a signal based on historical metrics.
@@ -23,13 +62,14 @@ def compute_signal_score(stats: dict) -> float:
     Used by both the Real-Time Scoring Engine and Strategy Lab.
     """
     wr = stats.get("win_rate_5d") or 0.0
-    exp = stats.get("expectancy_5d") or 0.0
+    # Carlos Audit: Use Information Ratio proxy if available, fallback to raw expectancy
+    exp = stats.get("ir_proxy") if stats.get("ir_proxy") is not None else (stats.get("expectancy_5d") or 0.0)
     pf = stats.get("profit_factor") or 0.0
     conf = stats.get("confidence") or "low"
 
     # Base scale:
     # Win Rate: linearly scale from 45% to 65% (max 40 pts)
-    # Expectancy: linearly scale from 0% to 1.0% (max 30 pts)
+    # Expectancy (or IR): linearly scale from 0 to 1.0 (max 30 pts)
     # Profit Factor: linearly scale from 1.0 to 1.5 (max 20 pts)
     # Confidence: high=10, medium=5, low=0 (max 10 pts)
     

@@ -19,14 +19,18 @@ const COLUMNS: { key: SortKey | string; label: string; sortable?: boolean }[] = 
   { key: 'rsi',                  label: 'RSI',        sortable: true },
   { key: 'relative_volume',      label: 'Rel Vol',    sortable: true },
   { key: 'momentum_1m',          label: 'Mom 1M',     sortable: true },
-  { key: 'composite_score',      label: 'Score',      sortable: true },
-  { key: 'signal_strength_score',label: 'Strength',   sortable: true },
+  { key: 'composite_score',      label: 'P(Win)',      sortable: true },
+  { key: 'signal_strength_score',label: 'P(Win)',   sortable: true },
   { key: 'signal_status',        label: 'Signal',     sortable: false },
 ];
 
 function ScoreBadge({ score }: { score: number }) {
-  const cls = score >= 60 ? 'score-bullish' : score >= 40 ? 'score-neutral' : 'score-bearish';
-  return <span className={`score-badge ${cls}`}>{score.toFixed(0)}</span>;
+  const color = score >= 60 ? 'bg-green-100 text-green-800' : score >= 40 ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800';
+  return (
+    <span className={`px-2 py-1 rounded text-xs font-medium ${color}`}>
+      {score}%
+    </span>
+  );
 }
 
 export function ScreenerTable({ data, onRowClick }: Props) {
