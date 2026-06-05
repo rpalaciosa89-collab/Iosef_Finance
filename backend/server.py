@@ -29,6 +29,9 @@ from app.services.human_layer import translate_ticker, _detect_situation
 from app.services import persistence
 from app.services.lstm_inference import get_composite_score, get_lstm_score
 from config.titan_universe import TITAN_100
+
+from app.api import auth, backtest
+from app.db.database import engine, Base
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
@@ -876,6 +879,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+app.include_router(backtest.router, prefix="/api/backtest", tags=["backtest"])
+
 @app.middleware("http")
 async def add_cache_control_headers(request: Request, call_next):
     response = await call_next(request)
@@ -891,6 +897,7 @@ async def add_cache_control_headers(request: Request, call_next):
 @app.on_event("startup")
 async def startup_event():
     persistence.init_db()
+    Base.metadata.create_all(bind=engine)
     # Start both background tasks independently
     asyncio.create_task(background_scanner())
     asyncio.create_task(background_sector_sync())
