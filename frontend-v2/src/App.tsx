@@ -24,6 +24,7 @@ function Dashboard() {
   const { scan, alerts, wsStatus, lastUpdated, market, setMarket } = useMarketData();
   const [activeTab, setActiveTab] = useState<Tab>('screener');
   const [selectedTicker, setSelectedTicker] = useState<TickerEntry | null>(null);
+  const { logout } = useAuth();
 
   const data = scan?.data ?? [];
 
@@ -43,6 +44,7 @@ function Dashboard() {
         wsStatus={wsStatus}
         lastUpdated={lastUpdated}
         tickerCount={data.length}
+        onLogout={logout}
       />
 
       <MarketBar data={data} />

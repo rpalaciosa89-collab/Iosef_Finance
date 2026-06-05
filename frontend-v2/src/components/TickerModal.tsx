@@ -92,7 +92,17 @@ export function TickerModal({ ticker, onClose }: Props) {
           'Authorization': `Bearer ${token}`
         }
       });
-      if (!res.ok) throw new Error("Error ejecutando el backtest en el backend.");
+      if (!res.ok) {
+        if (res.status === 401) {
+          throw new Error("Sesión expirada. Por favor, vuelve a iniciar sesión.");
+        }
+        let errMsg = "Error ejecutando el backtest en el backend.";
+        try {
+          const errData = await res.json();
+          if (errData.detail) errMsg = errData.detail;
+        } catch (e) {}
+        throw new Error(errMsg);
+      }
       const data = await res.json();
       setBacktestData(data.data);
     } catch (err: any) {

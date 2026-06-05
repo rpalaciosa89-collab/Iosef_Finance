@@ -10,11 +10,13 @@ interface Props {
   wsStatus: WsStatus;
   lastUpdated: Date | null;
   tickerCount: number;
+  onLogout?: () => void;
 }
 
 export function Header({
   activeTab, onTabChange,
   wsStatus, lastUpdated, tickerCount,
+  onLogout,
 }: Props) {
   const statusLabel = wsStatus === 'live' ? 'LIVE' : wsStatus === 'connecting' ? 'CONNECTING' : 'OFFLINE';
 
@@ -61,6 +63,18 @@ export function Header({
           <span style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>
             {lastUpdated.toLocaleTimeString()}
           </span>
+        )}
+        {onLogout && (
+          <button 
+            onClick={onLogout}
+            style={{
+              marginLeft: 12, padding: '4px 8px', background: 'transparent',
+              border: '1px solid rgba(255,255,255,0.1)', color: 'var(--text-secondary)',
+              borderRadius: 4, cursor: 'pointer', fontSize: 10, textTransform: 'uppercase'
+            }}
+          >
+            Logout
+          </button>
         )}
       </div>
     </header>
