@@ -27,6 +27,7 @@ from app.services import analytics
 from app.services.scoring import compute_signal_score, compute_ml_score
 from app.services.human_layer import translate_ticker, _detect_situation
 from app.services import persistence
+from app.services.lstm_inference import get_composite_score, get_lstm_score
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
@@ -1001,6 +1002,45 @@ def get_ticker_detail(ticker: str = Path(..., pattern=r"^[A-Za-z0-9\.\-]{1,10}$"
         return {"cached": False, "data": detail_data}
     except Exception as e:
         raise HTTPException(status_code=404, detail=f"Ticker {ticker} not found: {e}")
+
+@app.get("/api/neural-score/{ticker}")
+def get_neural_score(ticker: str = Path(..., pattern=r"^[A-Za-z0-9\.\-]{1,10}$")):
+    """
+    Retorna el score compuesto del Ensemble (XGBoost + Global LSTM Titan 100).
+    - p_win_xgb:       Probabilidad de éxito XGBoost (indicadores técnicos puntuales)
+    - p_win_lstm:      Confianza neural LSTM (60 días de secuencia histórica)
+    - p_win_composite: Score final del Ensemble (40% XGBoost + 60% LSTM)
+    """
+    ticker = ticker.upper()
+    cache_key = f"neural_score:{ticker}"
+
+    cached = redis_get(cache_key)
+    if cached:
+        return {"cached": True, "data": cached}
+
+    try:
+        # 1. Obtener XGBoost P(Win) desde scoring service
+        xgb_raw = compute_ml_score(ticker)
+        xgb_score = xgb_raw if isinstance(xgb_raw, float) else 0.5
+
+        # 2. Obtener Composite Score (XGBoost + LSTM)
+        composite = get_composite_score(ticker, xgb_score)
+
+        result = {
+            "ticker":          ticker,
+            "p_win_xgb":       composite["p_win_xgb"],
+            "p_win_lstm":      composite["p_win_lstm"],
+            "p_win_composite": composite["p_win_composite"],
+            "model":           composite["model"],
+            "signal":          "COMPRA" if composite["p_win_composite"] >= 0.60 else
+                               "VENTA"  if composite["p_win_composite"] <= 0.40 else
+                               "NEUTRAL",
+        }
+        redis_set(cache_key, result, 60)   # TTL 60s - se refresca cada minuto
+        return {"cached": False, "data": result}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error calculando score neural: {e}")
 
 @app.get("/api/ticker/{ticker}/intraday")
 def get_ticker_intraday(ticker: str = Path(..., pattern=r"^[A-Za-z0-9\.\-]{1,10}$"), period: str = "1d", interval: str = "1m"):

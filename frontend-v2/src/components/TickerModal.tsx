@@ -32,6 +32,13 @@ export function TickerModal({ ticker, onClose }: Props) {
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const [tf, setTf] = useState('1mo');
   const [loading, setLoading] = useState(true);
+  const [neuralScore, setNeuralScore] = useState<{
+    p_win_xgb: number;
+    p_win_lstm: number | null;
+    p_win_composite: number;
+    model: string;
+    signal: string;
+  } | null>(null);
 
   // Build and resize chart
   useEffect(() => {
@@ -89,6 +96,17 @@ export function TickerModal({ ticker, onClose }: Props) {
       .catch(console.warn)
       .finally(() => setLoading(false));
   }, [ticker.ticker, tf]);
+
+  // Fetch Neural Score (XGBoost + LSTM Ensemble)
+  useEffect(() => {
+    setNeuralScore(null);
+    fetch(`${API_BASE}/neural-score/${ticker.ticker}`)
+      .then(r => r.json())
+      .then((d: { data?: typeof neuralScore }) => {
+        if (d.data) setNeuralScore(d.data);
+      })
+      .catch(console.warn);
+  }, [ticker.ticker]);
 
   // Null-safe guards: backend guarantees these keys, but we add defaults
   // defensively to prevent React TypeError crashes (black screen bug).
@@ -161,6 +179,57 @@ export function TickerModal({ ticker, onClose }: Props) {
                 <div className="value" style={color ? { color } : undefined}>{value}</div>
               </div>
             ))}
+          </div>
+
+          {/* ── Neural Engine Panel (LSTM + XGBoost Ensemble) ── */}
+          <div style={{
+            marginTop: 16,
+            background: 'linear-gradient(135deg, #0d1117 0%, #0f1520 100%)',
+            border: '1px solid #1e3a5f',
+            borderRadius: 8,
+            padding: '14px 16px',
+          }}>
+            <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px', color: '#4a9eff', marginBottom: 12 }}>
+              ⚡ Motor Neural — Global LSTM Titan 100
+            </div>
+
+            {neuralScore ? (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+                {[
+                  {
+                    label: 'P(Win) XGBoost',
+                    value: `${(neuralScore.p_win_xgb * 100).toFixed(1)}%`,
+                    color: neuralScore.p_win_xgb >= 0.6 ? 'var(--green)' : neuralScore.p_win_xgb <= 0.4 ? 'var(--red)' : 'var(--amber)',
+                  },
+                  {
+                    label: 'P(Win) LSTM',
+                    value: neuralScore.p_win_lstm !== null ? `${(neuralScore.p_win_lstm * 100).toFixed(1)}%` : '—',
+                    color: neuralScore.p_win_lstm !== null
+                      ? neuralScore.p_win_lstm >= 0.6 ? 'var(--green)' : neuralScore.p_win_lstm <= 0.4 ? 'var(--red)' : 'var(--amber)'
+                      : 'var(--text-tertiary)',
+                  },
+                  {
+                    label: 'Score Ensemble',
+                    value: `${(neuralScore.p_win_composite * 100).toFixed(1)}%`,
+                    color: neuralScore.p_win_composite >= 0.6 ? 'var(--green)' : neuralScore.p_win_composite <= 0.4 ? 'var(--red)' : 'var(--amber)',
+                  },
+                  {
+                    label: 'Señal',
+                    value: neuralScore.signal,
+                    color: neuralScore.signal === 'COMPRA' ? 'var(--green)' : neuralScore.signal === 'VENTA' ? 'var(--red)' : 'var(--amber)',
+                  },
+                ].map(({ label, value, color }) => (
+                  <div key={label} className="detail-card" style={{ borderColor: '#1e3a5f' }}>
+                    <div className="label">{label}</div>
+                    <div className="value" style={{ color, fontSize: 16, fontWeight: 700 }}>{value}</div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ color: 'var(--text-tertiary)', fontSize: 12, textAlign: 'center', padding: '8px 0' }}>
+                Calculando score neural…
+              </div>
+            )}
           </div>
 
           {/* Trade Plan — only shown when a real trade plan exists */}

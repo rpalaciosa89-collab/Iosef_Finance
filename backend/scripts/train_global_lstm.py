@@ -40,11 +40,20 @@ logger = logging.getLogger(__name__)
 
 # ── Hiperparámetros ──────────────────────────────────────────────────────────────
 SEQ_LEN     = 60        # 60 días de memoria secuencial (Swing Multi-Timeframe)
-BATCH_SIZE  = 128
+BATCH_SIZE  = 1024       # M4 Pro 48GB: batch grande maximiza uso del Neural Engine
 EPOCHS      = 100
 LR          = 1e-3
 HIDDEN_SIZE = 64
 NUM_LAYERS  = 2
+
+# ── Device: MPS (Apple Silicon GPU) → CUDA → CPU ──────────────────────────────
+if torch.backends.mps.is_available():
+    DEVICE = torch.device("mps")
+elif torch.cuda.is_available():
+    DEVICE = torch.device("cuda")
+else:
+    DEVICE = torch.device("cpu")
+print(f"⚡ Device: {DEVICE}")
 
 SECTOR_ENCODE = {s: i for i, s in enumerate(set(SECTOR_MAP.values()))}  # One-hot
 
@@ -171,17 +180,18 @@ def run():
     dataset    = TitanDataset(all_seqs, all_labels)
     dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
 
-    model     = GlobalLSTM()
+    model     = GlobalLSTM().to(DEVICE)
     criterion = nn.BCELoss()
     optimizer = optim.AdamW(model.parameters(), lr=LR, weight_decay=1e-4)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=EPOCHS)
 
+    logger.info(f"\nIniciando entrenamiento en {DEVICE}...")
     losses = []
-    logger.info("\nIniciando entrenamiento...")
     for epoch in range(1, EPOCHS + 1):
         model.train()
         epoch_loss = 0.0
         for X_batch, y_batch in dataloader:
+            X_batch, y_batch = X_batch.to(DEVICE), y_batch.to(DEVICE)
             optimizer.zero_grad()
             pred = model(X_batch)
             loss = criterion(pred, y_batch)
