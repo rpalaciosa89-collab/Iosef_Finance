@@ -41,8 +41,6 @@ export default function App() {
       <Header
         activeTab={activeTab}
         onTabChange={setActiveTab}
-        market={market}
-        onMarketChange={setMarket}
         wsStatus={wsStatus}
         lastUpdated={lastUpdated}
         tickerCount={data.length}

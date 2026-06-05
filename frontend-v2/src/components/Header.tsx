@@ -2,21 +2,18 @@
  * components/Header.tsx
  * Barra de navegación superior del terminal.
  */
-import type { Market } from '../types/market';
 import type { WsStatus } from '../hooks/useMarketData';
 
 interface Props {
   activeTab: 'screener' | 'lab' | 'analytics';
   onTabChange: (tab: 'screener' | 'lab' | 'analytics') => void;
-  market: Market;
-  onMarketChange: (m: Market) => void;
   wsStatus: WsStatus;
   lastUpdated: Date | null;
   tickerCount: number;
 }
 
 export function Header({
-  activeTab, onTabChange, market, onMarketChange,
+  activeTab, onTabChange,
   wsStatus, lastUpdated, tickerCount,
 }: Props) {
   const statusLabel = wsStatus === 'live' ? 'LIVE' : wsStatus === 'connecting' ? 'CONNECTING' : 'OFFLINE';
@@ -44,16 +41,14 @@ export function Header({
       </nav>
 
       <div className="header-status">
-        <select
-          id="market-selector"
-          value={market}
-          onChange={e => onMarketChange(e.target.value as Market)}
-          style={{ fontSize: 11, padding: '3px 6px' }}
-        >
-          <option value="nasdaq100">NASDAQ 100</option>
-          <option value="sp500">S&amp;P 500</option>
-          <option value="europe">Europe</option>
-        </select>
+        <span style={{
+          fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
+          letterSpacing: '1px', color: '#4a9eff',
+          background: 'rgba(74,158,255,0.1)', padding: '3px 8px',
+          borderRadius: 4, border: '1px solid rgba(74,158,255,0.25)',
+        }}>
+          ⚡ TITAN 100
+        </span>
         <span>
           <span className={`status-dot ${wsStatus}`} />
           {statusLabel}
@@ -70,3 +65,4 @@ export function Header({
     </header>
   );
 }
+

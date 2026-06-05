@@ -28,6 +28,7 @@ from app.services.scoring import compute_signal_score, compute_ml_score
 from app.services.human_layer import translate_ticker, _detect_situation
 from app.services import persistence
 from app.services.lstm_inference import get_composite_score, get_lstm_score
+from config.titan_universe import TITAN_100
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
@@ -58,57 +59,23 @@ SECTOR_MAX_RETRIES   = 3
 SECTOR_BACKOFF_BASE  = 2.0   # exponential backoff base (seconds)
 
 # ---------------------------------------------------------------------------
-# Tickers to scan – per-market universes
+# Tickers to scan – Universo Titan 100 (Exclusivo)
+# Filosofía: Solo operamos las 100 empresas que pasaron por nuestro modelo
+# de ML (XGBoost + Global LSTM Titan 100). Cero ruido, máxima eficiencia.
 # ---------------------------------------------------------------------------
-NASDAQ100_TICKERS = [
-    "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "AVGO", "ADBE", "COST",
-    "PEP",  "CSCO", "NFLX",  "CMCSA","INTC", "AMD",  "TXN",  "QCOM", "INTU", "AMGN",
-    "ISRG", "AMAT", "BKNG",  "SBUX", "GILD", "MDLZ", "ADI",  "LRCX", "VRTX", "REGN",
-    "PANW", "SNPS", "CDNS",  "KLAC", "ABNB", "MELI", "PYPL", "CRWD", "MAR",  "MNST",
-    "ORLY", "FTNT", "CSX",   "DASH", "DXCM", "MRVL", "NXPI", "ADSK", "ROP",  "PCAR",
-    "CTAS", "ODFL", "CPRT",  "ADP",  "FANG", "KDP",  "ROST", "FAST", "MCHP", "KHC",
-    "PAYX", "AEP",  "GEHC",  "VRSK", "EXC",  "IDXX", "EA",   "CTSH", "XEL",  "BIIB",
-    "ON",   "ZS",   "TTWO",  "DDOG", "CSGP", "CDW",  "ILMN", "MDB",
-    "WBD",  "TEAM", "CEG",   "BKR",  "LULU", "WDAY", "TTD",  "SIRI", "DLTR",
-    "ALGN", "ENPH", "LCID",  "RIVN", "ZM",   "OKTA", "JD",   "PDD",  "DKNG",
-    # Eliminados 2026-06-04 (delisted / sin datos en yfinance): SPLK, ANSS, WBA
-]
 
-SP500_TICKERS = [
-    "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "BRK-B", "JPM", "JNJ",
-    "V",    "PG",   "UNH",   "HD",   "MA",   "DIS",  "PYPL", "BAC",   "VZ",  "ADBE",
-    "NFLX", "INTC", "CMCSA", "PFE",  "CSCO", "PEP",  "KO",   "WMT",   "T",   "MRK",
-    "ABT",  "CRM",  "AVGO",  "TXN",  "QCOM", "NKE",  "MCD",  "MDT",   "HON", "IBM",
-    "GE",   "CAT",  "BA",    "GS",   "LMT",  "AXP",  "SBUX", "BLK",   "MMM", "CVX",
-    "XOM",  "COP",  "SLB",   "EOG",  "MPC",  "PSX",  "VLO",  "OXY",   "HAL", "DVN",
-    "LLY",  "TMO",  "DHR",   "BMY",  "ABBV", "GILD", "VRTX", "REGN",  "ZTS", "SYK",
-    "ISRG", "BDX",  "CI",    "HUM",  "ELV",  "MCK",  "CAH",  "DXCM",  "A",   "BSX",
-    "DE",   "EMR",  "ITW",   "APD",  "SHW",  "ECL",  "NSC",  "UNP",   "CSX", "WM",
-    "ADP",  "PAYX", "FIS",   "FISV", "AJG",  "AON",  "MMC",  "TRV",   "CB",  "PGR",
-]
-
-EUROPE_TICKERS = [
-    "ASML", "MC.PA",  "SAP",   "SIE.DE", "OR.PA",  "SAN.PA", "TTE",   "NESN.SW", "NOVN.SW", "ROG.SW",
-    "AZN",  "SHEL",   "HSBA.L","ULVR.L", "BP.L",   "GSK",   "RIO.L", "BHP.L",   "DGE.L",   "BATS.L",
-    "AIR.PA","BNP.PA","CS.PA", "SU.PA",  "AI.PA",  "DTE.DE","BAS.DE","ALV.DE",  "MBG.DE",  "BMW.DE",
-    "VOW3.DE","ADS.DE","IFX.DE","MUV2.DE","DB1.DE","ENEL.MI","ISP.MI","UCG.MI", "RACE.MI", "ENI.MI",
-    "INGA.AS","PHIA.AS","AD.AS","WKL.AS", "DSM.AS","NOVO-B.CO","CARL-B.CO","MAERSK-B.CO","VWS.CO","NZYM-B.CO",
-]
-
-# Market lookup
+# Market lookup — un solo universo institucional
 MARKET_TICKERS = {
-    "nasdaq100": NASDAQ100_TICKERS,
-    "sp500":     SP500_TICKERS,
-    "europe":    EUROPE_TICKERS,
+    "titan100": TITAN_100,
 }
 
-DEFAULT_MARKET = "nasdaq100"
+DEFAULT_MARKET = "titan100"
 
 # Union of all tickers (for sector sync)
-ALL_TICKERS = sorted(set(NASDAQ100_TICKERS + SP500_TICKERS + EUROPE_TICKERS))
+ALL_TICKERS = sorted(set(TITAN_100))
 
 # Legacy alias so existing helpers keep working
-TICKERS_TO_SCAN = NASDAQ100_TICKERS
+TICKERS_TO_SCAN = TITAN_100
 
 # Sector metadata map (populated by background task, read without blocking scan)
 SECTOR_META_CACHE: dict[str, dict] = {}
@@ -1019,16 +986,13 @@ def get_neural_score(ticker: str = Path(..., pattern=r"^[A-Za-z0-9\.\-]{1,10}$")
         return {"cached": True, "data": cached}
 
     try:
-        # 1. Obtener XGBoost P(Win) buscando en el caché de los escáneres
+        # 1. Obtener XGBoost P(Win) buscando en el caché del escáner Titan 100
         xgb_score = 50.0
-        for mkt in ["nasdaq100", "sp500", "europe"]:
-            scan_data = redis_get(f"scan:data:{mkt}")
-            if scan_data and "data" in scan_data:
-                for t in scan_data["data"]:
-                    if t.get("ticker") == ticker:
-                        xgb_score = float(t.get("signal_strength_score", 50.0))
-                        break
-                if xgb_score != 50.0:
+        scan_data = redis_get("scan:data:titan100")
+        if scan_data and "data" in scan_data:
+            for t in scan_data["data"]:
+                if t.get("ticker") == ticker:
+                    xgb_score = float(t.get("signal_strength_score", 50.0))
                     break
 
         # 2. Obtener Composite Score (XGBoost + LSTM)

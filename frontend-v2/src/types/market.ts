@@ -4,7 +4,7 @@
  * Refleja exactamente el schema de salida de /api/scan del backend.
  */
 
-export type Market = 'nasdaq100' | 'sp500' | 'europe';
+export type Market = 'titan100';
 
 export type SignalStatus = 'new' | 'active' | 'weakening' | 'expired' | '';
 export type EntryWindowStatus = 'open' | 'narrowing' | 'late' | 'closed' | '';

@@ -24,7 +24,7 @@ interface UseMarketDataReturn {
 }
 
 export function useMarketData(): UseMarketDataReturn {
-  const [market, setMarket] = useState<Market>('nasdaq100');
+  const [market, setMarket] = useState<Market>('titan100');
   const [scan, setScan] = useState<ScanResponse | null>(null);
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
   const [wsStatus, setWsStatus] = useState<WsStatus>('connecting');
