@@ -1,9 +1,7 @@
-/**
- * App.tsx — Iosef Finance Terminal v2.0
- * Componente raíz: orquesta layout, estado global y tabs de navegación.
- */
 import { useState, useMemo, lazy, Suspense } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useMarketData } from './hooks/useMarketData';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { Header } from './components/Header';
 import { MarketBar } from './components/MarketBar';
 import { ScreenerTable } from './components/ScreenerTable';
@@ -12,6 +10,7 @@ import { StatusBar } from './components/StatusBar';
 import { TickerModal } from './components/TickerModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import type { TickerEntry } from './types/market';
+import LoginPage from './pages/Login';
 import './index.css';
 
 // Lazy-load heavy tabs
@@ -20,14 +19,13 @@ const Analytics = lazy(() => import('./tabs/Analytics'));
 
 type Tab = 'screener' | 'lab' | 'analytics';
 
-export default function App() {
+function Dashboard() {
   const { scan, alerts, wsStatus, lastUpdated, market, setMarket } = useMarketData();
   const [activeTab, setActiveTab] = useState<Tab>('screener');
   const [selectedTicker, setSelectedTicker] = useState<TickerEntry | null>(null);
 
   const data = scan?.data ?? [];
 
-  // Top 5 by signal strength for the side panel
   const topOpportunities = useMemo(() =>
     data
       .filter(t => t.signal_strength_score >= 60)
@@ -81,7 +79,6 @@ export default function App() {
         wsStatus={wsStatus}
       />
 
-      {/* Ticker detail modal — wrapped in ErrorBoundary to prevent black screen crashes */}
       {selectedTicker && (
         <ErrorBoundary
           fallback={
@@ -101,5 +98,34 @@ export default function App() {
         </ErrorBoundary>
       )}
     </div>
+  );
+}
+
+const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+  const { isAuthenticated } = useAuth();
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+  return <>{children}</>;
+};
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route 
+            path="/dashboard" 
+            element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            } 
+          />
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
   );
 }

@@ -8,6 +8,7 @@ import type { TickerEntry } from '../types/market';
 import { IosefChart } from './IosefChart';
 import type { BarData } from './IosefChart';
 import { FinancialsTab } from './FinancialsTab';
+import { useAuth } from '../context/AuthContext';
 
 const HOST = window.location.hostname;
 const API_BASE = `http://${HOST}:8002/api`;
@@ -20,10 +21,11 @@ interface Props {
 const TIMEFRAMES = ['1d', '5d', '1mo', '3mo', '6mo', '1y'];
 
 export function TickerModal({ ticker, onClose }: Props) {
+  const { token } = useAuth();
   const [tf, setTf] = useState('1mo');
   const [loading, setLoading] = useState(true);
   const [bars, setBars] = useState<BarData[]>([]);
-  const [activeTab, setActiveTab] = useState<'technical' | 'fundamentals'>('technical');
+  const [activeTab, setActiveTab] = useState<'technical' | 'fundamentals' | 'backtest'>('technical');
   const [neuralScore, setNeuralScore] = useState<{
     p_win_xgb: number;
     p_win_lstm: number | null;
@@ -31,6 +33,10 @@ export function TickerModal({ ticker, onClose }: Props) {
     model: string;
     signal: string;
   } | null>(null);
+
+  const [backtestData, setBacktestData] = useState<any>(null);
+  const [isBacktesting, setIsBacktesting] = useState(false);
+  const [backtestError, setBacktestError] = useState<string | null>(null);
 
   // Cargar velas históricas al cambiar ticker o timeframe
   useEffect(() => {
@@ -67,6 +73,34 @@ export function TickerModal({ ticker, onClose }: Props) {
       })
       .catch(console.warn);
   }, [ticker.ticker]);
+
+  const handleRunBacktest = async () => {
+    if (!token) {
+      setBacktestError("Acceso Denegado: Token de seguridad no encontrado.");
+      return;
+    }
+    setIsBacktesting(true);
+    setBacktestError(null);
+    try {
+      // 1 year backtest
+      const end = new Date();
+      const start = new Date();
+      start.setFullYear(start.getFullYear() - 1);
+      
+      const res = await fetch(`${API_BASE}/backtest/${ticker.ticker}?start_date=${start.toISOString().split('T')[0]}&end_date=${end.toISOString().split('T')[0]}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (!res.ok) throw new Error("Error ejecutando el backtest en el backend.");
+      const data = await res.json();
+      setBacktestData(data.data);
+    } catch (err: any) {
+      setBacktestError(err.message);
+    } finally {
+      setIsBacktesting(false);
+    }
+  };
 
   // Null-safe guards para evitar crashes de React (black screen bug)
   const plan = ticker.trade_plan ?? {
@@ -120,7 +154,66 @@ export function TickerModal({ ticker, onClose }: Props) {
             <button style={tabStyle(activeTab === 'fundamentals', '#00c896')} onClick={() => setActiveTab('fundamentals')}>
               🏦 Salud Financiera
             </button>
+            <button style={tabStyle(activeTab === 'backtest', '#D4AF37')} onClick={() => setActiveTab('backtest')}>
+              ⚡ Backtesting Cuantitativo
+            </button>
           </div>
+
+          {/* ── Contenido de Backtesting ── */}
+          {activeTab === 'backtest' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              <div style={{ background: 'linear-gradient(135deg, rgba(20,20,25,0.8), rgba(10,10,10,0.9))', border: '1px solid rgba(212, 175, 55, 0.2)', borderRadius: 12, padding: '24px' }}>
+                <h3 style={{ margin: '0 0 16px 0', color: '#D4AF37', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  Simulador Estadístico Institucional
+                </h3>
+                <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 20 }}>
+                  Ejecuta una simulación de 1 año sobre los datos históricos de {ticker.ticker} utilizando el algoritmo de cruce de medias como base de rentabilidad (PnL).
+                </p>
+                <button 
+                  onClick={handleRunBacktest}
+                  disabled={isBacktesting}
+                  style={{
+                    padding: '12px 24px',
+                    backgroundColor: '#D4AF37',
+                    color: '#0A0A0A',
+                    border: 'none',
+                    borderRadius: '8px',
+                    fontWeight: 600,
+                    cursor: isBacktesting ? 'not-allowed' : 'pointer',
+                    opacity: isBacktesting ? 0.7 : 1,
+                    transition: 'transform 0.1s',
+                    boxShadow: '0 4px 14px 0 rgba(212, 175, 55, 0.39)'
+                  }}
+                >
+                  {isBacktesting ? 'Computando Simulación...' : 'Ejecutar Backtest V2'}
+                </button>
+                {backtestError && <div style={{ marginTop: 16, color: '#ff6b6b', fontSize: 13 }}>{backtestError}</div>}
+              </div>
+
+              {backtestData && (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+                  <div className="detail-card" style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.1)' }}>
+                    <div className="label">Total Return (1Y)</div>
+                    <div className="value" style={{ color: backtestData.total_return_pct >= 0 ? 'var(--green)' : 'var(--red)', fontSize: '24px' }}>
+                      {backtestData.total_return_pct >= 0 ? '+' : ''}{backtestData.total_return_pct.toFixed(2)}%
+                    </div>
+                  </div>
+                  <div className="detail-card" style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.1)' }}>
+                    <div className="label">Max Drawdown</div>
+                    <div className="value" style={{ color: 'var(--red)', fontSize: '24px' }}>
+                      {backtestData.max_drawdown_pct.toFixed(2)}%
+                    </div>
+                  </div>
+                  <div className="detail-card" style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(212, 175, 55, 0.3)' }}>
+                    <div className="label" style={{ color: '#D4AF37' }}>Sharpe Ratio</div>
+                    <div className="value" style={{ fontSize: '24px', color: '#FFF' }}>
+                      {backtestData.sharpe_ratio.toFixed(2)}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* ── Contenido de Salud Financiera ── */}
           {activeTab === 'fundamentals' && (
