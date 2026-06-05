@@ -30,8 +30,9 @@ from app.services import persistence
 from app.services.lstm_inference import get_composite_score, get_lstm_score
 from config.titan_universe import TITAN_100
 
-from app.api import auth, backtest
+from app.api import auth, backtest, paper_trading as pt_router
 from app.db.database import engine, Base
+from app.models import paper_trading as _pt_models  # noqa: ensure tables registered
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
@@ -879,8 +880,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
-app.include_router(backtest.router, prefix="/api/backtest", tags=["backtest"])
+app.include_router(auth.router,      prefix="/api/auth",          tags=["auth"])
+app.include_router(backtest.router,  prefix="/api/backtest",      tags=["backtest"])
+app.include_router(pt_router.router, prefix="/api/paper-trading", tags=["paper-trading"])
 
 @app.middleware("http")
 async def add_cache_control_headers(request: Request, call_next):

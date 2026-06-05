@@ -5,8 +5,8 @@
 import type { WsStatus } from '../hooks/useMarketData';
 
 interface Props {
-  activeTab: 'screener' | 'lab' | 'analytics';
-  onTabChange: (tab: 'screener' | 'lab' | 'analytics') => void;
+  activeTab: 'screener' | 'lab' | 'analytics' | 'paper';
+  onTabChange: (tab: 'screener' | 'lab' | 'analytics' | 'paper') => void;
   wsStatus: WsStatus;
   lastUpdated: Date | null;
   tickerCount: number;
@@ -26,16 +26,17 @@ export function Header({
       </div>
 
       <nav className="header-nav">
-        {(['screener', 'lab', 'analytics'] as const).map(tab => (
+        {(['screener', 'lab', 'analytics', 'paper'] as const).map(tab => (
           <button
             key={tab}
             id={`nav-tab-${tab}`}
-            className={`nav-tab${activeTab === tab ? ' active' : ''}`}
+            className={`nav-tab${activeTab === tab ? ' active' : ''}${tab === 'paper' ? ' paper-tab' : ''}`}
             onClick={() => onTabChange(tab)}
           >
             {tab === 'screener' ? '📊 Screener'
               : tab === 'lab' ? '🔬 Signal Lab'
-              : '📈 Analytics'}
+              : tab === 'analytics' ? '📈 Analytics'
+              : '💼 Paper Trading'}
           </button>
         ))}
       </nav>

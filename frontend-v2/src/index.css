@@ -103,6 +103,15 @@ body {
   background: var(--blue-dim);
   border-color: rgba(59, 130, 246, 0.3);
 }
+/* Paper Trading tab — gold accent (Rosaura design) */
+.nav-tab.paper-tab { border-color: rgba(212, 175, 55, 0.15); }
+.nav-tab.paper-tab:hover { color: #D4AF37; background: rgba(212,175,55,0.08); }
+.nav-tab.paper-tab.active {
+  color: #0A0A0A;
+  background: #D4AF37;
+  border-color: #D4AF37;
+  box-shadow: 0 2px 12px rgba(212,175,55,0.3);
+}
 
 .header-status { display: flex; align-items: center; gap: 16px; font-size: 11px; color: var(--text-secondary); }
 
@@ -117,6 +126,10 @@ body {
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 /* ── Market Bar ──────────────────────────────────────────────────── */

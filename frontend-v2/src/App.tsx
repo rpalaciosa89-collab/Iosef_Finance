@@ -14,10 +14,11 @@ import LoginPage from './pages/Login';
 import './index.css';
 
 // Lazy-load heavy tabs
-const SignalLab = lazy(() => import('./tabs/SignalLab'));
-const Analytics = lazy(() => import('./tabs/Analytics'));
+const SignalLab    = lazy(() => import('./tabs/SignalLab'));
+const Analytics   = lazy(() => import('./tabs/Analytics'));
+const PaperTrading = lazy(() => import('./tabs/PaperTrading').then(m => ({ default: m.PaperTradingTab })));
 
-type Tab = 'screener' | 'lab' | 'analytics';
+type Tab = 'screener' | 'lab' | 'analytics' | 'paper';
 
 function Dashboard() {
   const { scan, alerts, wsStatus, lastUpdated, market, setMarket } = useMarketData();
@@ -59,8 +60,9 @@ function Dashboard() {
                 <span>Loading module…</span>
               </div>
             }>
-              {activeTab === 'lab' && <SignalLab market={market} />}
-              {activeTab === 'analytics' && <Analytics />}
+              {activeTab === 'lab'       && <SignalLab market={market} />}
+              {activeTab === 'analytics'  && <Analytics />}
+              {activeTab === 'paper'      && <PaperTrading />}
             </Suspense>
           )}
         </main>
