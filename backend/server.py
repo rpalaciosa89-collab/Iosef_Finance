@@ -685,10 +685,10 @@ def run_scan(market: str = DEFAULT_MARKET) -> tuple[list, list]:
             'volatility_20': atr / latest_close if latest_close > 0 else 0.0,
             'momentum_10': momentum if momentum else 0.0,
             'rsi_14': rsi if rsi else 50.0,
-            'macd_hist': ind.get("MACD_hist", 0.0) if ind else 0.0
+            'macd_hist': 0.0
         }
         
-        strength_score = compute_ml_score(features)
+        strength_score = float(compute_ml_score(features))
         strength_source = "xgboost_ml"
         best_adj = 0.0
 
@@ -1019,9 +1019,17 @@ def get_neural_score(ticker: str = Path(..., pattern=r"^[A-Za-z0-9\.\-]{1,10}$")
         return {"cached": True, "data": cached}
 
     try:
-        # 1. Obtener XGBoost P(Win) desde scoring service
-        xgb_raw = compute_ml_score(ticker)
-        xgb_score = xgb_raw if isinstance(xgb_raw, float) else 0.5
+        # 1. Obtener XGBoost P(Win) buscando en el caché de los escáneres
+        xgb_score = 50.0
+        for mkt in ["nasdaq100", "sp500", "europe"]:
+            scan_data = redis_get(f"scan:data:{mkt}")
+            if scan_data and "data" in scan_data:
+                for t in scan_data["data"]:
+                    if t.get("ticker") == ticker:
+                        xgb_score = float(t.get("signal_strength_score", 50.0))
+                        break
+                if xgb_score != 50.0:
+                    break
 
         # 2. Obtener Composite Score (XGBoost + LSTM)
         composite = get_composite_score(ticker, xgb_score)
@@ -1032,8 +1040,8 @@ def get_neural_score(ticker: str = Path(..., pattern=r"^[A-Za-z0-9\.\-]{1,10}$")
             "p_win_lstm":      composite["p_win_lstm"],
             "p_win_composite": composite["p_win_composite"],
             "model":           composite["model"],
-            "signal":          "COMPRA" if composite["p_win_composite"] >= 0.60 else
-                               "VENTA"  if composite["p_win_composite"] <= 0.40 else
+            "signal":          "COMPRA" if composite["p_win_composite"] >= 60.0 else
+                               "VENTA"  if composite["p_win_composite"] <= 40.0 else
                                "NEUTRAL",
         }
         redis_set(cache_key, result, 60)   # TTL 60s - se refresca cada minuto
@@ -1161,12 +1169,21 @@ def get_ticker_financials(ticker: str):
         return {"cached": True, "data": cached}
 
     try:
-        q_fin = yf.Ticker(ticker).quarterly_financials
-        if q_fin.empty:
-            return {"data": {}}
-
-        q_fin     = q_fin.replace({np.nan: None})
-        data_dict = {str(k): v.to_dict() for k, v in q_fin.items()}
+        t = yf.Ticker(ticker)
+        
+        def safe_extract(df):
+            if df is None or df.empty: return {}
+            df = df.replace({np.nan: None})
+            # Limitar a los 4 años más recientes para claridad en UI
+            cols = df.columns[:4]
+            return {str(k)[:10]: df[k].to_dict() for k in cols}
+            
+        data_dict = {
+            "income": safe_extract(t.financials),
+            "balance": safe_extract(t.balance_sheet),
+            "cashflow": safe_extract(t.cashflow)
+        }
+        
         redis_set(cache_key, data_dict, TTL_FINANCIALS)
         return {"cached": False, "data": data_dict}
     except Exception as e:

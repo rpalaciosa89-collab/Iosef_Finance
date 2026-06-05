@@ -19,8 +19,8 @@ const COLUMNS: { key: SortKey | string; label: string; sortable?: boolean }[] = 
   { key: 'rsi',                  label: 'RSI',        sortable: true },
   { key: 'relative_volume',      label: 'Rel Vol',    sortable: true },
   { key: 'momentum_1m',          label: 'Mom 1M',     sortable: true },
-  { key: 'composite_score',      label: 'P(Win)',      sortable: true },
-  { key: 'signal_strength_score',label: 'P(Win)',   sortable: true },
+  { key: 'composite_score',      label: 'Score (0-9)', sortable: true },
+  { key: 'signal_strength_score',label: 'P(Win)',      sortable: true },
   { key: 'signal_status',        label: 'Signal',     sortable: false },
 ];
 
@@ -28,7 +28,7 @@ function ScoreBadge({ score }: { score: number }) {
   const color = score >= 60 ? 'bg-green-100 text-green-800' : score >= 40 ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800';
   return (
     <span className={`px-2 py-1 rounded text-xs font-medium ${color}`}>
-      {score}%
+      {typeof score === 'number' ? score.toFixed(1) : score}%
     </span>
   );
 }

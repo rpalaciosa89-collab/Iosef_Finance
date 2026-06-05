@@ -384,3 +384,129 @@ tbody tr:hover { background: var(--bg-2); }
   font-size: 13px;
 }
 .empty-state .icon { font-size: 32px; opacity: 0.4; }
+
+/* ================================================================
+   MODAL
+   ================================================================ */
+.modal-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.75);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+  padding: 20px;
+  align-items: center; justify-content: center;
+}
+.modal-overlay.active { display: flex; }
+
+.modal-box {
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  width: 100%;
+  max-width: 1200px;
+  height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 25px 60px rgba(0,0,0,0.5);
+  overflow: hidden;
+}
+
+.modal-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  flex: 1;
+  overflow-y: auto;
+}
+.modal-col-left {
+  min-width: 0;
+  overflow-x: hidden;
+}
+.modal-col-right {
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+.modal-top {
+  flex-shrink: 0;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex; justify-content: space-between; align-items: center;
+  background: var(--bg-2); border-radius: 10px 10px 0 0;
+}
+.modal-top h2 {
+  font-size: 16px; font-weight: 600;
+  display: flex; align-items: center; gap: 8px;
+}
+.modal-top h2 .modal-ticker { color: var(--blue); font-family: var(--font-mono); }
+.modal-close {
+  width: 28px; height: 28px; border-radius: 6px;
+  border: 1px solid var(--border); background: var(--bg-0);
+  color: var(--text-secondary); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; transition: all var(--transition);
+}
+.modal-close:hover { color: #fff; border-color: var(--text-secondary); }
+
+.modal-body { 
+  flex: 1;
+  padding: 20px; 
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+.modal-body > * {
+  flex-shrink: 0;
+}
+
+/* ── Timeframe Selector ── */
+.tf-bar {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.tf-btn {
+  background: var(--bg-0);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  padding: 4px 10px;
+  font-size: 11px;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.tf-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--text-secondary);
+}
+.tf-btn.active {
+  background: var(--blue-dim);
+  color: var(--blue);
+  border-color: var(--blue);
+}
+
+/* ── Detail Grid ── */
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 0;
+}
+@media (max-width: 480px) {
+  .detail-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.detail-card {
+  background: var(--bg-0);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+}
+.detail-card .label { font-size: 10px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.detail-card .value { font-size: 14px; font-weight: 600; font-family: var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+

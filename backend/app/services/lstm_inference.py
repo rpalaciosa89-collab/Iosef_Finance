@@ -146,9 +146,9 @@ def get_composite_score(ticker: str, xgb_score: float) -> dict:
       - XGBoost  (40%): Rápido, basado en indicadores técnicos puntuales.
       - LSTM     (60%): Memoriza 60 días de secuencia, capta momentum profundo.
     """
-    lstm_score = get_lstm_score(ticker)
+    lstm_score_val = get_lstm_score(ticker)
 
-    if lstm_score is None:
+    if lstm_score_val is None:
         # Ticker fuera del Titan 100: usar solo XGBoost
         return {
             "p_win_xgb":      round(xgb_score, 4),
@@ -157,10 +157,13 @@ def get_composite_score(ticker: str, xgb_score: float) -> dict:
             "model":          "xgboost_only",
         }
 
-    composite = 0.40 * xgb_score + 0.60 * lstm_score
+    # Escalar a porcentaje (0-100) para alinear con xgb_score
+    lstm_pct = lstm_score_val * 100.0
+
+    composite = 0.40 * xgb_score + 0.60 * lstm_pct
     return {
         "p_win_xgb":       round(xgb_score, 4),
-        "p_win_lstm":      round(lstm_score, 4),
+        "p_win_lstm":      round(lstm_pct, 4),
         "p_win_composite": round(composite, 4),
         "model":           "ensemble",
     }
