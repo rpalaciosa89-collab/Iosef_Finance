@@ -16,6 +16,19 @@ DATABASE_URL = settings.DATABASE_URL
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
 
 engine = create_engine(DATABASE_URL, connect_args=connect_args)
+
+
+def _enable_sqlite_wal(engine) -> None:
+    """SP-3.4: activar journal_mode=WAL en SQLite para concurrencia y durabilidad."""
+    with engine.connect() as conn:
+        conn.execute(__import__("sqlalchemy").text("PRAGMA journal_mode=WAL"))
+
+
+if DATABASE_URL.startswith("sqlite"):
+    try:
+        _enable_sqlite_wal(engine)
+    except Exception:
+        pass  # fallo no bloqueante en entornos read-only
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
