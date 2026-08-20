@@ -31,6 +31,7 @@ from app.services.strategy_optimizer import run_strategy_optimization
 from app.services import analytics
 from app.services.scoring import compute_signal_score, compute_ml_score, get_model_info
 from app.services.scoring_engine import score_ticker
+from app.services.jobs import run_async_job, get_job, list_jobs
 from app.services.human_layer import translate_ticker, _detect_situation
 from app.services import persistence
 from app.services.lstm_inference import get_composite_score, get_lstm_score
@@ -1444,7 +1445,7 @@ def get_sector_sync_status():
 async def get_signal_evaluation(market: str = DEFAULT_MARKET):
     """
     Evaluates signal probabilities historically.
-    Heavy calculation runs in thread pool to avoid blocking the event loop.
+    SP-5.3: si no hay cache, crea un background job y responde 202 con job_id.
     Cached for 24 hours.
     """
     market = market.lower()
@@ -1456,23 +1457,27 @@ async def get_signal_evaluation(market: str = DEFAULT_MARKET):
     cached = redis_get(cache_key)
     if cached:
         return {"cached": True, "market": market, "data": cached}
-        
-    try:
-        tickers = MARKET_TICKERS[market]
-        results = await asyncio.to_thread(evaluate_signals, tickers, "2y")
-        
-        # Cache for 24 hours (86400 seconds)
+
+    def _run(params: dict) -> dict:
+        tickers = MARKET_TICKERS[params["market"]]
+        results = evaluate_signals(tickers, "2y")
         redis_set(cache_key, results, 86400)
-        
-        return {"cached": False, "market": market, "data": results}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error evaluating signals: {str(e)}")
+        return results
+
+    job_id = run_async_job("signal-evaluation", {"market": market}, _run)
+    return {
+        "cached": False,
+        "market": market,
+        "status": "queued",
+        "job_id": job_id,
+        "message": "Analisis en background. Poll GET /api/jobs/{job_id}",
+    }
 
 @app.get("/api/strategy-optimization")
 async def get_strategy_optimization(market: str = DEFAULT_MARKET):
     """
-    Advanced statistical optimization of signals. 
-    Heavy blocking operation runs in thread pool, cached for 6 hours.
+    Advanced statistical optimization of signals.
+    SP-5.3: background job si no hay cache. Cached for 6 hours.
     """
     market = market.lower()
     if market not in MARKET_TICKERS:
@@ -1483,17 +1488,35 @@ async def get_strategy_optimization(market: str = DEFAULT_MARKET):
     cached = redis_get(cache_key)
     if cached:
         return {"cached": True, "market": market, "data": cached}
-        
-    try:
-        tickers = MARKET_TICKERS[market]
-        results = await asyncio.to_thread(run_strategy_optimization, tickers, "2y")
-        
-        # Cache for 6 hours (21600 seconds)
+
+    def _run(params: dict) -> dict:
+        tickers = MARKET_TICKERS[params["market"]]
+        results = run_strategy_optimization(tickers, "2y")
         redis_set(cache_key, results, 21600)
-        
-        return {"cached": False, "market": market, "data": results}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error running strategy optimization: {str(e)}")
+        return results
+
+    job_id = run_async_job("strategy-optimization", {"market": market}, _run)
+    return {
+        "cached": False,
+        "market": market,
+        "status": "queued",
+        "job_id": job_id,
+        "message": "Optimizacion en background. Poll GET /api/jobs/{job_id}",
+    }
+
+# ---------------------------------------------------------------------------
+# Jobs API (SP-5.3)
+# ---------------------------------------------------------------------------
+@app.get("/api/jobs")
+def jobs_list():
+    return {"jobs": list_jobs()}
+
+@app.get("/api/jobs/{job_id}")
+def jobs_get(job_id: str):
+    job = get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job
 
 @app.get("/api/analytics")
 def get_system_analytics():
