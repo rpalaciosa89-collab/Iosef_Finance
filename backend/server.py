@@ -14,6 +14,11 @@ import os
 import time
 from typing import Optional
 
+from dotenv import load_dotenv
+
+# SP-3.2: cargar .env del CWD (backend/) ANTES de leer cualquier variable.
+load_dotenv(override=False)
+
 import numpy as np
 import pandas as pd
 import redis
@@ -1011,7 +1016,11 @@ async def startup_event():
 
 @app.get("/api/health")
 def health_check():
-    return {"status": "ok", "service": "iosef-backend"}
+    return {
+        "status": "ok",
+        "service": "iosef-backend",
+        "database": str(engine.url),
+    }
 
 # ---------------------------------------------------------------------------
 # Endpoints
