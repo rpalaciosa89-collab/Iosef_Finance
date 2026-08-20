@@ -30,6 +30,7 @@ from app.services.signal_evaluation import evaluate_signals
 from app.services.strategy_optimizer import run_strategy_optimization
 from app.services import analytics
 from app.services.scoring import compute_signal_score, compute_ml_score, get_model_info
+from app.services.scoring_engine import score_ticker
 from app.services.human_layer import translate_ticker, _detect_situation
 from app.services import persistence
 from app.services.lstm_inference import get_composite_score, get_lstm_score
@@ -685,18 +686,18 @@ def run_scan(market: str = DEFAULT_MARKET) -> tuple[list, list]:
         macd_hist = float((macd_line - macd_line.ewm(span=9, adjust=False).mean()).iloc[-1])
 
         # --- Composite Score ---
-        # BUG-008 fix: oversold bonus always applies; overbought penalty always applies
-        score = 0
-        if latest_close > sma20:   score += 1
-        if latest_close > sma50:   score += 2
-        if latest_close > sma200:  score += 3
-        if rsi < 30:
-            score += 2   # oversold
-        elif rsi > 70:
-            score -= 2   # overbought
-        if momentum_1m > 0:        score += 2
-        if rel_volume > 1.5:       score += 1
-        if pct_change > 0:         score += 1
+        # SP-4.3: logica extraida a ScoringEngine (heuristica etiquetada + ML si promovido)
+        engine_result = score_ticker({
+            "close": latest_close, "sma20": sma20, "sma50": sma50, "sma200": sma200,
+            "rsi": rsi, "momentum_1m": momentum_1m, "rel_volume": rel_volume,
+            "pct_change": pct_change,
+            "log_return": np.log(latest_close / prev_close) if prev_close > 0 else 0.0,
+            "volatility_20": float(close_series.pct_change().rolling(20).std().iloc[-1]) if len(close_series) > 20 else 0.0,
+            "momentum_10": momentum_10, "rsi_14": rsi, "macd_hist": macd_hist,
+        })
+        score = engine_result["value"]
+        score_source = engine_result["source"]
+        score_components = engine_result["components"]
 
         # --- Condition 7: Breakout signal (internal indicator, not ground truth) ---
         # Price crosses above SMA50 or SMA200 – useful as attention signal
@@ -777,6 +778,8 @@ def run_scan(market: str = DEFAULT_MARKET) -> tuple[list, list]:
             "relative_volume":   round(rel_volume, 2),
             "atr":               round(atr, 4),
             "composite_score":   score,
+            "score_source":      score_source,
+            "score_components":  score_components,
             "ma_breakout_signal": ma_breakout_signal,
             "signal_strength_score": strength_score,
             "signal_strength_source": strength_source,
