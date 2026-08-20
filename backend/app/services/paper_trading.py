@@ -3,7 +3,6 @@ Paper Trading Service Layer
 Handles: account creation, executing simulated trades, 
          mark-to-market PnL, stop-loss/take-profit checks.
 """
-import yfinance as yf
 from datetime import datetime
 from typing import Optional
 from sqlalchemy.orm import Session
@@ -16,6 +15,7 @@ from app.schemas.paper_trading import (
     PaperAccountCreate, ExecuteTradeRequest,
     PaperPositionResponse, PaperTradeResponse, PortfolioSummary
 )
+from app.services.market_data import get_cached_bulk_prices
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -23,9 +23,7 @@ from app.schemas.paper_trading import (
 def _fetch_live_price(ticker: str) -> Optional[float]:
     """Fetch the latest market price using yfinance (1-day snapshot)."""
     try:
-        t = yf.Ticker(ticker)
-        hist = t.fast_info
-        return round(float(hist.last_price), 4)
+        return get_cached_bulk_prices([ticker]).get(ticker)
     except Exception:
         return None
 
@@ -153,8 +151,12 @@ def refresh_positions(user_id: int, db: Session) -> list[PaperPosition]:
     positions = db.query(PaperPosition).filter(PaperPosition.account_id == account.id).all()
     auto_closed = []
 
+    # SP-5.2: fetch por LOTE (una llamada con cache para todos los tickers)
+    tickers = [p.ticker for p in positions]
+    prices = get_cached_bulk_prices(tickers)
+
     for pos in positions:
-        price = _fetch_live_price(pos.ticker)
+        price = prices.get(pos.ticker)
         if price is None:
             continue
         pos.current_price = price
