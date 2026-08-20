@@ -1,100 +1,47 @@
-# Ola 6 — ML Real + Performance — CHANGELOG
+# Ola 6 — Persistencia Unificada y Entrega — CHANGELOG
 
-**Fecha:** 2026-06-10
-**Ejecutor:** Auditor Integral de Plataforma Financiera (Agente)
-**Duración real:** ~2.5 horas
-**Duración estimada:** ~12 horas
+**Fecha:** 2026-08-20
+**Metodología:** Spec-Driven Development + Loop Engineering
+**Estado previo:** 3 fuentes de DB | CI sin alembic check | health sin dependencias | logs mixtos con print
 
 ---
 
-## Resumen
+## Specs Cerradas
 
-Ola final de la auditoría. Reemplazado el entrenamiento XGBoost con datos sintéticos por datos reales de mercado, implementado WebSocket real-time, y envueltas operaciones bloqueantes en thread pool.
-
-## Hallazgos Resueltos
-
-| ID | Severidad | Categoría | Descripción | Estado |
-|---|---|---|---|---|
-| H-003 | **Crítica** | ML | XGBoost entrenado con datos sintéticos (np.random) | ✅ Resuelto |
-| H-013 | Media | Backend | WebSocket declarado en frontend pero sin endpoint | ✅ Resuelto |
-| H-014 | Media | Performance | Operaciones bloqueantes en endpoints síncronos | ✅ Resuelto |
-
-## Pasos Ejecutados
-
-### 6.1 — XGBoost con datos reales (H-003)
-
-**`scripts/train_xgboost_real.py`** (nuevo, 233 líneas):
-- Pipeline completo de entrenamiento con datos reales de yfinance
-- Descarga 2 años de datos OHLCV para las 98 empresas del Titan 100
-- Extrae 5 features: `log_return`, `volatility_20`, `momentum_10`, `rsi_14`, `macd_hist`
-- Label: 1 si retorno forward 5d > mediana del ticker
-- Entrena XGBClassifier (200 trees, lr=0.03, max_depth=5)
-- Guarda modelo + metadata JSON (provenance, métricas, fecha)
-
-**Resultados del entrenamiento:**
-- **46,823 muestras** de 98 tickers
-- **Accuracy:** 53.87%
-- **Precision:** 54.41%  
-- **ROC AUC:** **0.5519** (señal real por encima del ruido aleatorio)
-- Metadata: `source: "real_market_yfinance"`, fecha, n_samples, n_tickers
-
-**`scripts/train_xgboost.py`** (deprecado):
-- Advertencia de deprecación, referencia al nuevo script
-
-**`app/services/scoring.py`** (actualizado):
-- `get_model_info()` — devuelve metadata del modelo (source, trained_at, n_samples, n_tickers, roc_auc)
-- Archivo `xgboost_signal_scorer_meta.json` para tracking de proveniencia
-
-### 6.2 — WebSocket real-time (H-013)
-
-**`server.py`** — Nuevo endpoint WebSocket:
-- `ws://localhost:8002/ws/market` — acepta conexiones, envía scan actual al conectar
-- `_broadcast_scan()` — envía datos a todos los clientes conectados
-- Integrado en `background_scanner`: cada 60s, nuevos datos se envían a clientes WS
-- El frontend (`useMarketData.ts`) ya tenía el WebSocket declarado (`ws://HOST:8080/ws/market`). Ahora el backend también lo soporta en `:8002`.
-
-### 6.3 — Async wrapping (H-014)
-
-**`server.py`** — Endpoints convertidos a async:
-- `GET /api/signal-evaluation` → `async def` + `await asyncio.to_thread(evaluate_signals, ...)`
-- `GET /api/strategy-optimization` → `async def` + `await asyncio.to_thread(run_strategy_optimization, ...)`
-- `background_scanner` ya usaba `asyncio.to_thread(run_scan, ...)` desde antes
-
-### 6.4 — Endpoint de metadata
-
-- `GET /api/model-info` → `{model_source, trained_at, n_samples, n_tickers, roc_auc}`
-- Permite al frontend verificar que el modelo está entrenado con datos reales
-
-## Verificación
-
-- ✅ 52/52 tests backend
-- ✅ 4/4 tests frontend  
-- ✅ TypeScript: 3 errores preexistentes (sin nuevos)
-- ✅ Frontend build: exitoso
-- ✅ 31 rutas en backend (incluyendo `/ws/market`, `/api/model-info`)
-- ✅ Modelo: 98 tickers reales, AUC 0.5519
-- ✅ Endpoints bloqueantes ahora usan thread pool
-
-## Archivos Modificados
-
-| Archivo | Cambio |
-|---|---|
-| `backend/scripts/train_xgboost_real.py` | **Nuevo** — pipeline datos reales |
-| `backend/scripts/train_xgboost.py` | Deprecado (usa train_xgboost_real.py) |
-| `backend/models/xgboost_signal_scorer.pkl` | Reemplazado (datos reales vs sintéticos) |
-| `backend/models/xgboost_signal_scorer_meta.json` | **Nuevo** — metadata del modelo |
-| `backend/app/services/scoring.py` | `get_model_info()` + metadata loading |
-| `backend/server.py` | WebSocket `/ws/market`, async endpoints, broadcast, model-info endpoint |
-
-## Score
-
-| Dimensión | Antes (post-Ola 5) | Después |
+| ID | Título | Estado |
 |---|---|---|
-| ML | 2/10 | 7/10 |
-| Performance | 6/10 | 7.5/10 |
-| Backend | 8/10 | 8.5/10 |
-| **Global** | **9/10** | **9.5/10** |
+| SP-6.1 | Unificar persistencia de trades en la DB SQLAlchemy | ✅ |
+| SP-6.2 | CI/CD como gate (workflow + alembic check) | ✅ |
+| SP-6.3 | Healthchecks con dependencias + degradación graceful | ✅ |
+| SP-6.4 | Logging estructurado JSON + request_id | ✅ |
 
----
+## Métricas de Bucle
 
-*Ola 6 completada. Auditoría integral cerrada.*
+| Métrica | Antes | Después | Target |
+|---|---|---|---|
+| `back.tests_verdes` | 111 | **120** | 100% |
+| `db.unificado` | persistence en `data/trades_history.db` paralela | **1 DB** (`iosef_finance.db`, WAL) | 1 |
+| `ci.gate` | workflow sin alembic | pytest + **alembic check** + frontend | gate completo |
+| `health.deps` | solo status/service | **redis + database + data_provider** | 3 deps |
+| `logs.formato` | prints + logging plano | **JSON con request_id, route, latency_ms** | JSON |
+| `logs.prints` | 15 prints en servicios | **0** (fuera de `__main__`) | 0 |
+
+## Commits
+
+```
+cfd288b [Ola6.1] refactor(db): unificar persistencia de trades en la DB SQLAlchemy
+9f5c5b1 [Ola6.2+6.3] ci: workflow con alembic check; health con dependencias + degradacion
+3163288 [Ola6.4] feat(logging): logging estructurado JSON con request_id
+```
+
+## Retrospectiva (bucle 4)
+
+1. **Qué mejoró:** una sola DB para todo (WAL + migraciones); CI valida drift de esquema; health diagnostica Redis/DB/proveedor; logs correlacionables por request_id.
+2. **Qué se atrasó:** nada.
+3. **Supuesto confirmado:** las DBs legacy de trades estaban vacías — la unificación no perdió datos; el código que escribía en el archivo paralelo ahora escribe en la DB unificada (contrastado con tests).
+4. **Nuevos ítems:** backend de trades debería migrar a tabla SQLAlchemy (hoy `sqlite3` directo sobre el mismo archivo — funcional pero no ORM); branch protection en GitHub pendiente de configurar manualmente.
+
+## Estado Actual
+
+- **Tests:** 120 passed
+- **Siguiente ola:** Ola 7 — Hardening (drift monitor, cliente API frontend, tipado, E2E)
