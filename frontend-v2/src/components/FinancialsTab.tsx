@@ -16,7 +16,7 @@ export function FinancialsTab({ ticker }: FinancialsProps) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    apiFetch<any>(`/ticker/${ticker}/financials`)
+    apiFetch<{ data?: FinancialData }>(`/ticker/${ticker}/financials`)
       .then(d => {
         if (d.data && d.data.income) {
           setData(d.data);
@@ -35,7 +35,7 @@ export function FinancialsTab({ ticker }: FinancialsProps) {
   }
 
   const years = Object.keys(data.income).sort();
-  const getVal = (dict: any, year: string, key: string) => dict[year]?.[key] || 0;
+  const getVal = (dict: FinancialData['income'], year: string, key: string) => dict[year]?.[key] ?? 0;
   let maxRevenue = 0; let maxAssets = 0;
   years.forEach(y => {
     maxRevenue = Math.max(maxRevenue, getVal(data.income, y, "Total Revenue"));

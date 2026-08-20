@@ -84,17 +84,23 @@ export function PaperTradingTab() {
     setLoading(true);
     setError(null);
     try {
-      const r = await apiFetch<any>('/paper-trading/portfolio');
-      if (!r || r.status === 404) {
-        await apiFetch<any>('/paper-trading/account', {
+      let r: Portfolio | null;
+      try {
+        r = await apiFetch<Portfolio>('/paper-trading/portfolio');
+      } catch (e) {
+        if (e instanceof Error && e.message !== 'Session expired') setError(e.message);
+        r = null;
+      }
+      if (!r) {
+        await apiFetch('/paper-trading/account', {
           method: 'POST',
           body: JSON.stringify({ name: 'Iosef Simulation Account', initial_balance: 100000 }),
         });
         return fetchPortfolio();
       }
       setPortfolio(r);
-    } catch (e: any) {
-      if (e.message !== 'Session expired') setError(e.message);
+    } catch (e: unknown) {
+      if (e instanceof Error && e.message !== 'Session expired') setError(e.message);
     } finally {
       setLoading(false);
     }
@@ -132,8 +138,8 @@ export function PaperTradingTab() {
       });
       await fetchPortfolio();
       setActiveSection('portfolio');
-    } catch (e: any) {
-      setExecError(e.message);
+    } catch (e: unknown) {
+      setExecError(e instanceof Error ? e.message : String(e));
     } finally {
       setExecLoading(false);
     }
@@ -187,10 +193,10 @@ export function PaperTradingTab() {
 
       {/* ── Section Tabs ──────────────────────────────────────────────────── */}
       <div style={s.tabBar}>
-        <button style={s.tab(activeSection === 'portfolio')} onClick={() => setActiveSection('portfolio')}>
+        <button style={tabStyle(activeSection === 'portfolio')} onClick={() => setActiveSection('portfolio')}>
           📊 Portfolio Activo
         </button>
-        <button style={s.tab(activeSection === 'execute')} onClick={() => setActiveSection('execute')}>
+        <button style={tabStyle(activeSection === 'execute')} onClick={() => setActiveSection('execute')}>
           ⚡ Ejecutar Señal
         </button>
         <button style={{ ...s.refreshBtn, marginLeft: 'auto' }} onClick={handleRefresh} disabled={refreshing}>
@@ -329,7 +335,7 @@ export function PaperTradingTab() {
 }
 
 // ── Styles ────────────────────────────────────────────────────────────────────
-const s: Record<string, any> = {
+const s: Record<string, React.CSSProperties> = {
   container: { display: 'flex', flexDirection: 'column', gap: 20, padding: '0 4px' },
   center: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 200 },
   spinner: { width: 32, height: 32, border: '3px solid #222', borderTop: '3px solid #D4AF37', borderRadius: '50%', animation: 'spin 0.8s linear infinite' },
@@ -338,12 +344,6 @@ const s: Record<string, any> = {
   kpiLabel: { fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 6 },
   kpiValue: { fontWeight: 700, fontFamily: '"Roboto Mono", monospace' },
   tabBar: { display: 'flex', gap: 8, alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.07)', paddingBottom: 12 },
-  tab: (active: boolean) => ({
-    padding: '8px 16px', borderRadius: 6, border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: 13,
-    background: active ? '#D4AF37' : 'rgba(255,255,255,0.05)',
-    color: active ? '#0A0A0A' : '#888',
-    transition: 'all 0.15s',
-  }),
   refreshBtn: { padding: '7px 14px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.1)', background: 'transparent', color: '#888', cursor: 'pointer', fontSize: 13 },
   panel: { background: 'rgba(15,15,22,0.6)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: '20px 24px' },
   panelTitle: { margin: '0 0 16px 0', fontSize: 15, fontWeight: 600, color: '#E0E0E0' },
@@ -362,3 +362,12 @@ const s: Record<string, any> = {
   tr: { transition: 'background 0.15s' },
   closeBtn: { padding: '4px 10px', background: 'rgba(255,77,109,0.12)', border: '1px solid rgba(255,77,109,0.3)', color: '#ff4d6d', borderRadius: 4, cursor: 'pointer', fontSize: 11 },
 };
+
+function tabStyle(active: boolean): React.CSSProperties {
+  return {
+    padding: '8px 16px', borderRadius: 6, border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: 13,
+    background: active ? '#D4AF37' : 'rgba(255,255,255,0.05)',
+    color: active ? '#0A0A0A' : '#888',
+    transition: 'all 0.15s',
+  };
+}

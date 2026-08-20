@@ -5,6 +5,7 @@ import type { BarData } from './IosefChart';
 import { FinancialsTab } from './FinancialsTab';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch, apiFetchNoAuth } from '../lib/api';
+import type { IntradayBar, SignalOverlay, BacktestResult, NeuralScore } from '../lib/types';
 
 interface Props {
   ticker: TickerEntry;
@@ -28,9 +29,9 @@ export function TickerModal({ ticker, onClose }: Props) {
     alignment?: string;
   } | null>(null);
 
-  const [signalOverlays, setSignalOverlays] = useState<any[]>([]);
+  const [signalOverlays, setSignalOverlays] = useState<SignalOverlay[]>([]);
 
-  const [backtestData, setBacktestData] = useState<any>(null);
+  const [backtestData, setBacktestData] = useState<BacktestResult | null>(null);
   const [isBacktesting, setIsBacktesting] = useState(false);
   const [backtestError, setBacktestError] = useState<string | null>(null);
 
@@ -38,10 +39,10 @@ export function TickerModal({ ticker, onClose }: Props) {
     setLoading(true);
     setBars([]);
     setSignalOverlays([]);
-    apiFetchNoAuth<any>(`/ticker/${ticker.ticker}/intraday?period=${tf}&_t=${Date.now()}`)
+    apiFetchNoAuth<{ data?: IntradayBar[]; signal_overlays?: SignalOverlay[] }>(`/ticker/${ticker.ticker}/intraday?period=${tf}&_t=${Date.now()}`)
       .then((d) => {
         if (d.data && d.data.length > 0) {
-          const converted: BarData[] = d.data.map((b: any) => ({
+          const converted: BarData[] = d.data.map((b: IntradayBar) => ({
             time: new Date(b.time * 1000).toISOString(),
             open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume,
           }));
@@ -57,7 +58,7 @@ export function TickerModal({ ticker, onClose }: Props) {
 
   useEffect(() => {
     setNeuralScore(null);
-    apiFetchNoAuth<any>(`/neural-score/${ticker.ticker}`)
+    apiFetchNoAuth<{ data?: NeuralScore }>(`/neural-score/${ticker.ticker}`)
       .then((d) => { if (d.data) setNeuralScore(d.data); })
       .catch(console.warn);
   }, [ticker.ticker]);
@@ -73,10 +74,10 @@ export function TickerModal({ ticker, onClose }: Props) {
       const end = new Date();
       const start = new Date();
       start.setFullYear(start.getFullYear() - 1);
-      const data = await apiFetch<any>(`/backtest/${ticker.ticker}?start_date=${start.toISOString().split('T')[0]}&end_date=${end.toISOString().split('T')[0]}`);
+      const data = await apiFetch<{ data: BacktestResult }>(`/backtest/${ticker.ticker}?start_date=${start.toISOString().split('T')[0]}&end_date=${end.toISOString().split('T')[0]}`);
       setBacktestData(data.data);
-    } catch (err: any) {
-      setBacktestError(err.message);
+    } catch (err: unknown) {
+      setBacktestError(err instanceof Error ? err.message : String(err));
     } finally {
       setIsBacktesting(false);
     }
@@ -380,8 +381,8 @@ export function TickerModal({ ticker, onClose }: Props) {
                               }),
                             });
                             alert(`✅ Orden simulada ejecutada para ${ticker.ticker}`);
-                          } catch (err: any) {
-                            alert(`Error: ${err.message}`);
+                          } catch (err: unknown) {
+                            alert(`Error: ${err instanceof Error ? err.message : String(err)}`);
                           }
                         }}
                         style={{

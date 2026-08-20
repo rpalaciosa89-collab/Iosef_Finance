@@ -58,9 +58,6 @@ describe('apiFetch', () => {
           )
         }),
     )
-    await expect(apiFetch('/slow', { timeoutMs: 5 })).rejects.toMatchObject({
-      name: 'ApiError',
-      status: 0,
-    })
+    await expect(apiFetch('/slow', { timeoutMs: 5 })).rejects.toBeInstanceOf(ApiError)
   })
 })

@@ -26,8 +26,8 @@ const LoginPage: React.FC = () => {
       await apiFetchForm('/auth/token', formData);
       login();
       navigate('/dashboard');
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setIsLoading(false);
     }
