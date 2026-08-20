@@ -56,6 +56,26 @@ explotable con modelos lineales/árboles sobre 2 años de datos.
      (no de dirección) para validar si el filtro aporta alfa.
 4. **Mantener el gate AUC ≥ 0.56**: es el seguro contra el autoengaño.
 
+## Backtest del ranking heurístico (recomendación #4)
+
+Para validar si el filtro del screener (top-N por score heurístico) aporta
+valor aunque el ML direccional no, se ejecutó un backtest de ranking
+(`scripts/research_screener_ranking.py`): cartera equal-weight top-10 por
+score, rebalanceada cada 5 días, sin lookahead, vs mercado equal-weight.
+
+| Métrica | Valor |
+|---|---|
+| Periodos evaluados | 59 |
+| Exceso medio por periodo | +0.190% |
+| Exceso acumulado | **+10.15%** |
+| Hit rate (cartera > mercado) | 55.9% |
+| t-stat del exceso | **0.63** |
+
+**Veredicto:** el signo del exceso es positivo y consistente (55.9%), pero con
+t-stat 0.63 **no hay evidencia estadísticamente significativa** de alfa en 1 año
+de datos. Conclusión: la heurística es un *filtro de atención razonable*, no un
+edge demostrable. Re-evaluar cuando existan ≥ 2-3 años de datos.
+
 ## Estado del pipeline
 
 - El modelo en producción queda **archivado** (`promoted: false`) — ML score = 50.
