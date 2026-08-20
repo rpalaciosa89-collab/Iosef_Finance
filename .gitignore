@@ -75,3 +75,8 @@ backend/*.db
 # SQLite WAL artifacts
 *.db-shm
 *.db-wal
+
+# Playwright
+frontend-v2/test-results/
+frontend-v2/playwright-report/
+frontend-v2/e2e/.playwright/

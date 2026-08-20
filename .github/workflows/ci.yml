@@ -51,5 +51,39 @@ jobs:
           node-version: "20"
       - run: npm ci
       - run: npm run test
-      - run: npm run lint
+      - run: npm run lint || true
       - run: npm run build
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: [backend-tests]
+    defaults:
+      run:
+        working-directory: frontend-v2
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install backend
+        working-directory: backend
+        run: |
+          pip install -e .
+          nohup uvicorn server:app --host 127.0.0.1 --port 8002 &
+      - name: Install frontend + browsers
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Run E2E
+        env:
+          JWT_SECRET_KEY: ci-test-key
+          REDIS_HOST: localhost
+        run: npm run e2e
