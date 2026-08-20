@@ -1,0 +1,43 @@
+{
+  "generated_at": "2026-08-20T17:20:21.609574+00:00",
+  "label": "outperform_equal_weight_market",
+  "features": {
+    "v1": [
+      "log_return",
+      "volatility_20",
+      "momentum_10",
+      "rsi_14",
+      "macd_hist"
+    ],
+    "v2": [
+      "log_return",
+      "volatility_20",
+      "momentum_10",
+      "rsi_14",
+      "macd_hist",
+      "volume_z",
+      "atr_pct",
+      "relative_strength",
+      "gap_pct",
+      "sma20_dist",
+      "sma50_dist",
+      "range_pos_10"
+    ]
+  },
+  "results": {
+    "v1": {
+      "auc_oos_mean": 0.4931,
+      "auc_oos_std": 0.0121,
+      "cv_folds": 3,
+      "embargo_days": 5,
+      "promoted": false
+    },
+    "v2": {
+      "auc_oos_mean": 0.4903,
+      "auc_oos_std": 0.0144,
+      "cv_folds": 3,
+      "embargo_days": 5,
+      "promoted": false
+    }
+  }
+}
