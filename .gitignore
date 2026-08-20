@@ -66,3 +66,8 @@ data/*.sqlite
 data/*.csv
 data/*.json
 !data/.gitkeep
+
+# Database files (do not commit)
+backend/*.db
+*.db
+!data/.gitkeep

@@ -5,9 +5,7 @@
  */
 import React, { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
-
-const HOST = window.location.hostname;
-const API  = `http://${HOST}:8002/api/paper-trading`;
+import { apiFetch } from '../lib/api';
 
 interface Position {
   id: number;
@@ -69,7 +67,7 @@ const fmt = (n: number | null | undefined, prefix = '$') => {
 };
 
 export function PaperTradingTab() {
-  const { token } = useAuth();
+  const { } = useAuth();
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
@@ -82,38 +80,32 @@ export function PaperTradingTab() {
   const [refreshing, setRefreshing]   = useState(false);
   const [activeSection, setActiveSection] = useState<'portfolio' | 'execute'>('portfolio');
 
-  const authHeaders = { Authorization: `Bearer ${token}` };
-
   const fetchPortfolio = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const r = await fetch(`${API}/portfolio`, { headers: authHeaders });
-      if (r.status === 404) {
-        // No account yet — auto-create one
-        const c = await fetch(`${API}/account`, {
+      const r = await apiFetch<any>('/paper-trading/portfolio');
+      if (!r || r.status === 404) {
+        await apiFetch<any>('/paper-trading/account', {
           method: 'POST',
-          headers: { ...authHeaders, 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: 'Iosef Simulation Account', initial_balance: 100000 }),
         });
-        if (!c.ok) throw new Error(await c.text());
-        return fetchPortfolio(); // retry
+        return fetchPortfolio();
       }
-      if (!r.ok) throw new Error(await r.text());
-      setPortfolio(await r.json());
+      setPortfolio(r);
     } catch (e: any) {
-      setError(e.message);
+      if (e.message !== 'Session expired') setError(e.message);
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, []);
 
   useEffect(() => { fetchPortfolio(); }, [fetchPortfolio]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      await fetch(`${API}/refresh`, { method: 'POST', headers: authHeaders });
+      await apiFetch('/paper-trading/refresh', { method: 'POST' });
       await fetchPortfolio();
     } finally {
       setRefreshing(false);
@@ -134,12 +126,10 @@ export function PaperTradingTab() {
         take_profit: execForm.take_profit ? parseFloat(execForm.take_profit) : null,
         signal_source: 'IOSEF_ML',
       };
-      const r = await fetch(`${API}/execute`, {
+      await apiFetch('/paper-trading/execute', {
         method: 'POST',
-        headers: { ...authHeaders, 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      if (!r.ok) throw new Error((await r.json()).detail || 'Error executing trade');
       await fetchPortfolio();
       setActiveSection('portfolio');
     } catch (e: any) {
@@ -151,7 +141,7 @@ export function PaperTradingTab() {
 
   const handleClose = async (posId: number) => {
     try {
-      await fetch(`${API}/close/${posId}?close_reason=MANUAL`, { method: 'POST', headers: authHeaders });
+      await apiFetch(`/paper-trading/close/${posId}?close_reason=MANUAL`, { method: 'POST' });
       await fetchPortfolio();
     } catch { /* ignore */ }
   };

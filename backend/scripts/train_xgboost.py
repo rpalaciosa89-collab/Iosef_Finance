@@ -1,3 +1,10 @@
+# DEPRECATED — 2026-06-10 (Ola 6)
+# Este script usa datos sintéticos (np.random).
+# Para entrenar con datos reales de mercado, usar:
+#   python scripts/train_xgboost_real.py
+#
+# Este archivo se conserva por referencia histórica.
+
 import os
 import pandas as pd
 import numpy as np
@@ -8,7 +15,13 @@ import joblib
 import logging
 from pathlib import Path
 
-# Configuración básica de logging
+import warnings
+warnings.warn(
+    "train_xgboost.py usa datos sintéticos. Usa train_xgboost_real.py para datos reales de mercado.",
+    DeprecationWarning,
+    stacklevel=2,
+)
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 

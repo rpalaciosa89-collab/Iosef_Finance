@@ -195,13 +195,15 @@ def get_portfolio(user_id: int, db: Session) -> PortfolioSummary:
     positions = db.query(PaperPosition).filter(PaperPosition.account_id == account.id).all()
     trades    = db.query(PaperTrade).filter(PaperTrade.account_id == account.id).order_by(PaperTrade.opened_at.desc()).limit(50).all()
 
-    # Build position responses with unrealized PnL
+    # ── Build position responses with unrealized PnL ──
     pos_responses = []
     total_unrealized = 0.0
+    total_position_cost = 0.0
     for pos in positions:
         price = pos.current_price or pos.entry_price
         pnl_usd, pnl_pct = _compute_unrealized(pos, price)
         total_unrealized += pnl_usd
+        total_position_cost += pos.entry_price * pos.quantity
         r = PaperPositionResponse.model_validate(pos)
         r.unrealized_pnl     = pnl_usd
         r.unrealized_pnl_pct = pnl_pct
@@ -215,7 +217,7 @@ def get_portfolio(user_id: int, db: Session) -> PortfolioSummary:
     winners  = sum(1 for t in closed if (t.pnl or 0) > 0)
     win_rate = round((winners / len(closed) * 100) if closed else 0.0, 2)
 
-    total_equity = round(account.cash_balance + total_unrealized, 2)
+    total_equity = round(account.cash_balance + total_position_cost + total_unrealized, 2)
 
     return PortfolioSummary(
         account=PaperAccountResponse.model_validate(account),

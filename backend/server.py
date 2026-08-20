@@ -18,21 +18,26 @@ import numpy as np
 import pandas as pd
 import redis
 import yfinance as yf
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.services.signal_evaluation import evaluate_signals
 from app.services.strategy_optimizer import run_strategy_optimization
 from app.services import analytics
-from app.services.scoring import compute_signal_score, compute_ml_score
+from app.services.scoring import compute_signal_score, compute_ml_score, get_model_info
 from app.services.human_layer import translate_ticker, _detect_situation
 from app.services import persistence
 from app.services.lstm_inference import get_composite_score, get_lstm_score
 from config.titan_universe import TITAN_100
 
 from app.api import auth, backtest, paper_trading as pt_router
-from app.db.database import engine, Base
+from app.api.llm_router import router as llm_router
+from app.db.database import engine, Base, SessionLocal
 from app.models import paper_trading as _pt_models  # noqa: ensure tables registered
+from app.models.user import User  # noqa: ensure User registered for foreign keys
+from app.services.paper_trading import execute_trade, refresh_positions
+from app.schemas.paper_trading import ExecuteTradeRequest
+from app.models.paper_trading import TradeDirection
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
@@ -304,10 +309,26 @@ def _update_trade_simulation(state: dict, current_price: float, now: float, mark
     state["trade_tracking"] = tracking
 
 def _format_lifecycle_output(state: dict, now: float) -> dict:
-    age_seconds = int(now - state.get("signal_detected_at", now))
+    def _parse_ts(ts) -> float:
+        """Accept a Unix float OR an ISO string and return a Unix float."""
+        if ts is None:
+            return now
+        if isinstance(ts, (int, float)):
+            return float(ts)
+        if isinstance(ts, str) and ts:
+            try:
+                return datetime.fromisoformat(ts.replace('Z', '+00:00')).timestamp()
+            except Exception:
+                pass
+        return now
+
     def format_ts(ts):
         if not ts: return ""
-        return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+        ts_float = _parse_ts(ts)
+        return datetime.fromtimestamp(ts_float, tz=timezone.utc).isoformat()
+
+    detected_ts = _parse_ts(state.get("signal_detected_at"))
+    age_seconds = max(0, int(now - detected_ts))
 
     return {
         "signal_detected_at": format_ts(state.get("signal_detected_at")),
@@ -321,20 +342,35 @@ def _format_lifecycle_output(state: dict, now: float) -> dict:
         "trade_tracking": state.get("trade_tracking", {})
     }
 
+from datetime import datetime
+
 def update_signal_lifecycle(ticker: str, strength_score: float, active_signals: list, current_price: float, ticker_entry: dict, market_status: str, atr: float = 0.0, commit_new: bool = False) -> tuple[dict, bool]:
     key = f"lifecycle:{ticker}"
     cached = redis_get(key)
     now = time.time()
+    iso_now = datetime.utcnow().isoformat() + "Z"
     
-    is_valid_signal = strength_score >= 40.0 and len(active_signals) > 0
+    # NUEVA REGLA ESTRICTA (Sprint 12):
+    # La señal es válida si el ML está MUY seguro (>= 70 o <= 30) O si hay una señal tradicional fuerte activa.
+    is_ml_strong_buy = strength_score >= 70.0
+    is_ml_strong_sell = strength_score <= 30.0
+    is_valid_signal = (is_ml_strong_buy or is_ml_strong_sell) or (len(active_signals) > 0)
+    
+    # Forzar la situación direccional si fue disparada puramente por ML
     situation = _detect_situation(ticker_entry)
-    
+    if is_ml_strong_buy and not situation.endswith("up"):
+        situation = "momentum_shift_up" # Override para ML
+    elif is_ml_strong_sell and not situation.endswith("down"):
+        situation = "momentum_shift_down" # Override para ML
+        
     if not cached:
         if is_valid_signal:
             trade_plan = _generate_trade_plan(situation, current_price, atr)
+            # Add detection price to trade plan for charts
+            trade_plan["detection_price"] = current_price
             state = {
-                "signal_detected_at": now,
-                "signal_last_validated_at": now,
+                "signal_detected_at": iso_now,
+                "signal_last_validated_at": iso_now,
                 "signal_status": "new",
                 "detection_price": current_price,
                 "entry_window_status": "open",
@@ -344,7 +380,7 @@ def update_signal_lifecycle(ticker: str, strength_score: float, active_signals: 
                 "trade_plan": trade_plan,
                 "trade_tracking": {
                     "trade_status": "open",
-                    "trade_opened_at": now,
+                    "trade_opened_at": iso_now,
                     "trade_closed_at": None,
                     "trade_result": "",
                     "pnl_percentage": 0.0,
@@ -391,7 +427,15 @@ def update_signal_lifecycle(ticker: str, strength_score: float, active_signals: 
     else:
         # EXISTING SIGNAL
         state = cached
-        detected_at = state.get("signal_detected_at", now)
+        # Tolerate both float and ISO string timestamps (backward compat)
+        raw_detected = state.get("signal_detected_at", now)
+        if isinstance(raw_detected, str) and raw_detected:
+            try:
+                detected_at = datetime.fromisoformat(raw_detected.replace('Z', '+00:00')).timestamp()
+            except Exception:
+                detected_at = now
+        else:
+            detected_at = float(raw_detected) if raw_detected else now
         detection_price = state.get("detection_price", current_price)
         age = now - detected_at
         
@@ -554,9 +598,9 @@ def run_scan(market: str = DEFAULT_MARKET) -> tuple[list, list]:
         current_context = "neutral"
 
     if current_context == "bearish":
-        alerts.append({"ticker": "MARKET", "type": "market_weakness", "message": f"Market Weakness: breadth at {market_breadth:.0%}", "strength": "high", "color": "yellow"})
+        alerts.append({"ticker": "MARKET", "type": "market_weakness", "message": f"Mercado bajista: {stocks_above_sma50} de {total_valid} acciones sobre su media de 50 días. Precaución.", "strength": "high", "color": "yellow"})
     elif current_context == "bullish":
-        alerts.append({"ticker": "MARKET", "type": "market_strength", "message": f"Market Strength: breadth at {market_breadth:.0%}", "strength": "high", "color": "green"})
+        alerts.append({"ticker": "MARKET", "type": "market_strength", "message": f"Mercado alcista: {stocks_above_sma50} de {total_valid} acciones sobre su media de 50 días.", "strength": "high", "color": "green"})
 
     opt_cache = redis_get(f"meta:strategy_optimization:{market}")
 
@@ -568,6 +612,46 @@ def run_scan(market: str = DEFAULT_MARKET) -> tuple[list, list]:
         volume_series = volumes[ticker].dropna()
 
         if len(close_series) < 200:
+            # We must still return it so the frontend shows all 100 tickers
+            sector = redis_get(f"meta:sector:{ticker}") or {}
+            dummy_entry = {
+                "ticker": ticker,
+                "price": float(close_series.iloc[-1]) if len(close_series) > 0 else 0.0,
+                "change_pct": 0.0,
+                "rsi": 0.0,
+                "sma20": 0.0,
+                "sma50": 0.0,
+                "sma200": 0.0,
+                "momentum_1m": 0.0,
+                "relative_volume": 0.0,
+                "composite_score": 0,
+                "ma_breakout_signal": False,
+                "signal_strength_score": 0.0,
+                "signal_strength_source": "fallback",
+                "signal_context_adjustment": 0.0,
+                "market_context_used": "neutral",
+                "sector": sector.get("sector", ""),
+                "industry": sector.get("industry", ""),
+                "situation": "Insuficientes velas históricas (<200)",
+                "human_signal": "Esperando historial completo",
+                "confidence_text": "N/A",
+                "decision_clarity": "baja",
+                "suggested_action": "Mantener al margen",
+                "holding_period": "-",
+                "signal_detected_at": "",
+                "signal_last_validated_at": "",
+                "signal_status": "",
+                "signal_age_seconds": 0,
+                "entry_window_status": "",
+                "signal_expired": False,
+                "signal_invalid_reason": "No data",
+                "trade_plan": {
+                    "direction": "", "entry_price": 0.0, "stop_loss": 0.0, "take_profit": 0.0,
+                    "sl_pct": 0.0, "tp_pct": 0.0, "risk_reward": ""
+                },
+                "trade_tracking": {}
+            }
+            results.append(dummy_entry)
             continue
 
         latest_close = float(close_series.iloc[-1])
@@ -579,7 +663,8 @@ def run_scan(market: str = DEFAULT_MARKET) -> tuple[list, list]:
         sma50 = float(close_series.rolling(50).mean().iloc[-1])
         sma200= float(close_series.rolling(200).mean().iloc[-1])
 
-        momentum   = ((latest_close - float(close_series.iloc[-20])) / float(close_series.iloc[-20])) * 100
+        momentum_1m = ((latest_close - float(close_series.iloc[-20])) / float(close_series.iloc[-20])) * 100
+        momentum_10 = float(close_series.pct_change(10).iloc[-1]) * 100 if len(close_series) > 10 else momentum_1m
         avg_vol_20 = float(volume_series.rolling(20).mean().iloc[-1])
         latest_vol = float(volume_series.iloc[-1])
         rel_volume = latest_vol / avg_vol_20 if avg_vol_20 > 0 else 1.0
@@ -588,17 +673,23 @@ def run_scan(market: str = DEFAULT_MARKET) -> tuple[list, list]:
         low_series  = lows[ticker].dropna()
         atr = _compute_atr(close_series, high_series, low_series)
 
+        # MACD histogram for XGBoost feature (BUG-001 fix)
+        ema12 = close_series.ewm(span=12, adjust=False).mean()
+        ema26 = close_series.ewm(span=26, adjust=False).mean()
+        macd_line = ema12 - ema26
+        macd_hist = float((macd_line - macd_line.ewm(span=9, adjust=False).mean()).iloc[-1])
+
         # --- Composite Score ---
-        # Carlos Audit: score RSI is conditional to market context
+        # BUG-008 fix: oversold bonus always applies; overbought penalty always applies
         score = 0
         if latest_close > sma20:   score += 1
         if latest_close > sma50:   score += 2
         if latest_close > sma200:  score += 3
-        if rsi < 30 and current_context != "bearish":
+        if rsi < 30:
             score += 2   # oversold
-        elif rsi > 70 and current_context != "bullish":
+        elif rsi > 70:
             score -= 2   # overbought
-        if momentum > 0:           score += 2
+        if momentum_1m > 0:        score += 2
         if rel_volume > 1.5:       score += 1
         if pct_change > 0:         score += 1
 
@@ -654,9 +745,9 @@ def run_scan(market: str = DEFAULT_MARKET) -> tuple[list, list]:
         features = {
             'log_return': pct_change / 100.0 if pct_change else 0.0,
             'volatility_20': atr / latest_close if latest_close > 0 else 0.0,
-            'momentum_10': momentum if momentum else 0.0,
+            'momentum_10': momentum_10 if momentum_10 else 0.0,
             'rsi_14': rsi if rsi else 50.0,
-            'macd_hist': 0.0
+            'macd_hist': macd_hist if macd_hist else 0.0
         }
         
         strength_score = float(compute_ml_score(features))
@@ -677,8 +768,9 @@ def run_scan(market: str = DEFAULT_MARKET) -> tuple[list, list]:
             "sma20":             round(sma20, 2),
             "sma50":             round(sma50, 2),
             "sma200":            round(sma200, 2),
-            "momentum_1m":       round(momentum, 2),
+            "momentum_1m":       round(momentum_1m, 2),
             "relative_volume":   round(rel_volume, 2),
+            "atr":               round(atr, 4),
             "composite_score":   score,
             "ma_breakout_signal": ma_breakout_signal,
             "signal_strength_score": strength_score,
@@ -701,6 +793,9 @@ def run_scan(market: str = DEFAULT_MARKET) -> tuple[list, list]:
         lifecycle_fields, is_new = update_signal_lifecycle(ticker, strength_score, active_signals, latest_close, ticker_entry, market_status, atr=atr, commit_new=False)
         ticker_entry.update(lifecycle_fields)
         
+        # Siempre agregamos al resultado final para no esconder acciones del screener
+        results.append(ticker_entry)
+        
         if is_new:
             # TOP OPPORTUNITIES BASE FILTER
             if strength_score >= 60.0 and ticker_entry.get("decision_clarity") != "baja":
@@ -718,9 +813,6 @@ def run_scan(market: str = DEFAULT_MARKET) -> tuple[list, list]:
                 if not contradiction and not any(wt in sig_type for wt in weak_types):
                     new_candidates.append(ticker_entry)
         else:
-            # Append existing trades to results immediately
-            results.append(ticker_entry)
-            
             # --- Persistence Layer for EXISTING trades ---
             tracking = ticker_entry.get("trade_tracking", {})
             if tracking.get("trade_status", "").startswith("closed_"):
@@ -730,26 +822,26 @@ def run_scan(market: str = DEFAULT_MARKET) -> tuple[list, list]:
         # --- Alerts Generation ---
         # 1. Breakout
         if prev_close < prev50 and latest_close > sma50:
-            alerts.append({"ticker": ticker, "type": "breakout_up", "message": f"Breakout above SMA50 at {latest_close:.2f}", "strength": "high", "color": "green"})
+            alerts.append({"ticker": ticker, "type": "breakout_up", "message": f"{ticker} rompió al alza su media de 50 días en ${latest_close:.2f}. Tendencia alcista.", "strength": "high", "color": "green"})
         elif prev_close > prev50 and latest_close < sma50:
-            alerts.append({"ticker": ticker, "type": "breakdown_down", "message": f"Breakdown below SMA50 at {latest_close:.2f}", "strength": "high", "color": "red"})
+            alerts.append({"ticker": ticker, "type": "breakdown_down", "message": f"{ticker} rompió a la baja su media de 50 días en ${latest_close:.2f}. Tendencia bajista.", "strength": "high", "color": "red"})
         
         # 2. Volume Spike
         if rel_volume > 2.0:
             vol_color = "green" if pct_change > 0 else "red"
-            alerts.append({"ticker": ticker, "type": "high_volume", "message": f"Volume Spike ({rel_volume:.1f}x avg)", "strength": "medium", "color": vol_color})
+            alerts.append({"ticker": ticker, "type": "high_volume", "message": f"{ticker} con volumen inusualmente alto ({rel_volume:.1f}x el promedio).", "strength": "medium", "color": vol_color})
             
         # 3. RSI Extreme
         if rsi > 70:
-            alerts.append({"ticker": ticker, "type": "overbought", "message": f"RSI Overbought ({rsi:.1f})", "strength": "medium", "color": "red"})
+            alerts.append({"ticker": ticker, "type": "overbought", "message": f"{ticker} en zona de sobrecompra (RSI {rsi:.1f}). Posible corrección.", "strength": "medium", "color": "red"})
         elif rsi < 30:
-            alerts.append({"ticker": ticker, "type": "oversold", "message": f"RSI Oversold ({rsi:.1f})", "strength": "medium", "color": "green"})
+            alerts.append({"ticker": ticker, "type": "oversold", "message": f"{ticker} en zona de sobreventa (RSI {rsi:.1f}). Posible rebote técnico.", "strength": "medium", "color": "green"})
             
         # 4. Momentum Shift
         if pct_change > 3.0:
-            alerts.append({"ticker": ticker, "type": "momentum_shift", "message": f"Strong move up (+{pct_change:.1f}%)", "strength": "high", "color": "green"})
+            alerts.append({"ticker": ticker, "type": "momentum_shift", "message": f"{ticker} sube con fuerza (+{pct_change:.1f}%). Impulso alcista.", "strength": "high", "color": "green"})
         elif pct_change < -3.0:
-            alerts.append({"ticker": ticker, "type": "momentum_shift", "message": f"Strong move down ({pct_change:.1f}%)", "strength": "high", "color": "red"})
+            alerts.append({"ticker": ticker, "type": "momentum_shift", "message": f"{ticker} cae con fuerza ({pct_change:.1f}%). Impulso bajista.", "strength": "high", "color": "red"})
 
     # --- Top Opportunities Selection ---
     # Sort candidates by total quality (score)
@@ -790,7 +882,37 @@ def run_scan(market: str = DEFAULT_MARKET) -> tuple[list, list]:
                  state["trade_tracking"]["trade_opened_at"] = parse_ts(state["trade_tracking"]["trade_opened_at"])
                  
         redis_set(key, state, 7200)
-        results.append(cand)
+        # cand is already in results list, so we don't append it again
+        
+        # --- Auto-Trading Engine (Sprint 12) ---
+        if cand.get("signal_status") == "new" and cand.get("trade_plan", {}).get("direction"):
+            p_win = cand.get("signal_strength_score", 50.0)
+            trade_dir = cand["trade_plan"]["direction"]
+            
+            # Filtro institucional estricto: Solo auto-ejecutar si el modelo ML tiene altísima confianza (>70% o <30%)
+            # AUTO-TRADING DESHABILITADO POR PETICIÓN DEL USUARIO
+            if False and ((trade_dir == "LONG" and p_win >= 70.0) or (trade_dir == "SHORT" and p_win <= 30.0)):
+                db = SessionLocal()
+                try:
+                    # 10 shares por defecto para simulación
+                    default_qty = 10 
+                    direction = TradeDirection.LONG if trade_dir == "LONG" else TradeDirection.SHORT
+                    req = ExecuteTradeRequest(
+                        ticker=cand["ticker"],
+                        direction=direction,
+                        quantity=default_qty,
+                        entry_price=cand["price"],
+                        stop_loss=cand["trade_plan"].get("stop_loss", 0),
+                        take_profit=cand["trade_plan"].get("take_profit", 0),
+                        signal_source="IOSEF_ML"
+                    )
+                    try:
+                        execute_trade(user_id=1, payload=req, db=db)
+                    except ValueError as e:
+                        # Error (ej. falta balance, o no cuenta) -> pass
+                        pass
+                finally:
+                    db.close()
 
     # 5. Market Context was pre-calculated at the beginning of the function
     return results, alerts
@@ -815,9 +937,22 @@ async def background_scanner():
                         json.dump(payload, f)
                     # Also write Parquet cache for faster cold-start reload
                     _write_parquet_cache(market, payload)
+                    # Broadcast to WebSocket clients
+                    asyncio.create_task(_broadcast_scan(payload))
                     print(f"[scanner] ✓ {market}: {len(results)} tickers scanned")
             except Exception as e:
                 print(f"[scanner] Error scanning {market}: {e}")
+                
+        # --- Auto-Close TP/SL Check (Sprint 12) ---
+        db = SessionLocal()
+        try:
+            # Revisa las posiciones de la cuenta sim 1 y cierra si toca SL/TP
+            refresh_positions(user_id=1, db=db)
+        except Exception as e:
+            print(f"[scanner] Error in auto-trading refresh: {e}")
+        finally:
+            db.close()
+
         await asyncio.sleep(60)
 
 # ---------------------------------------------------------------------------
@@ -872,9 +1007,12 @@ def _read_parquet_cache(market: str) -> Optional[dict]:
 # ---------------------------------------------------------------------------
 app = FastAPI(title="Iosef Finance Backend")
 
+cors_origins_str = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000")
+cors_origins = [o.strip() for o in cors_origins_str.split(",")]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -883,6 +1021,7 @@ app.add_middleware(
 app.include_router(auth.router,      prefix="/api/auth",          tags=["auth"])
 app.include_router(backtest.router,  prefix="/api/backtest",      tags=["backtest"])
 app.include_router(pt_router.router, prefix="/api/paper-trading", tags=["paper-trading"])
+app.include_router(llm_router,       prefix="/api/llm",           tags=["llm"])
 
 @app.middleware("http")
 async def add_cache_control_headers(request: Request, call_next):
@@ -900,9 +1039,16 @@ async def add_cache_control_headers(request: Request, call_next):
 async def startup_event():
     persistence.init_db()
     Base.metadata.create_all(bind=engine)
-    # Start both background tasks independently
     asyncio.create_task(background_scanner())
     asyncio.create_task(background_sector_sync())
+
+# ---------------------------------------------------------------------------
+# Health
+# ---------------------------------------------------------------------------
+
+@app.get("/api/health")
+def health_check():
+    return {"status": "ok", "service": "iosef-backend"}
 
 # ---------------------------------------------------------------------------
 # Endpoints
@@ -931,14 +1077,39 @@ def get_scan(market: str = DEFAULT_MARKET):
             return json.load(f)
     return {"timestamp": None, "market": market, "data": []}
 
+@app.post("/api/scan/refresh")
+async def force_refresh_scan(market: str = DEFAULT_MARKET):
+    """Force a fresh scan immediately, bypassing all caches. Useful for dev/debug."""
+    market = market.lower()
+    if market not in MARKET_TICKERS:
+        market = DEFAULT_MARKET
+    try:
+        results, alerts = await asyncio.to_thread(run_scan, market)
+        payload = {"timestamp": time.time(), "market": market, "data": results, "alerts": alerts}
+        redis_set(f"scan:data:{market}", payload, TTL_SCAN)
+        if market == DEFAULT_MARKET:
+            redis_set("scan:data", payload, TTL_SCAN)
+        os.makedirs(SNAPSHOT_DIR, exist_ok=True)
+        snap_file = os.path.join(SNAPSHOT_DIR, f"latest_{market}.json")
+        with open(snap_file, "w") as f:
+            json.dump(payload, f)
+        _write_parquet_cache(market, payload)
+        return {"status": "ok", "market": market, "tickers": len(results)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/top")
 def get_top(market: str = DEFAULT_MARKET):
-    """Top 20 tickers by signal_strength_score."""
+    """Top 20 tickers by signal_strength_score, filtered for actionable clarity."""
     scan  = get_scan(market)
     data  = scan.get("data", [])
     if not data:
         return {"timestamp": None, "market": market, "data": []}
-    top20 = sorted(data, key=lambda x: (x.get("signal_strength_score", 0.0), x.get("composite_score", 0)), reverse=True)[:20]
+    actionable = [t for t in data
+                   if t.get("decision_clarity", "baja") != "baja"
+                   and t.get("trade_plan", {}).get("direction") in ("LONG", "SHORT")
+                   and t.get("trade_plan", {}).get("entry_price", 0) > 0]
+    top20 = sorted(actionable, key=lambda x: (x.get("signal_strength_score", 0.0), x.get("composite_score", 0)), reverse=True)[:20]
     return {"timestamp": scan.get("timestamp"), "market": market, "data": top20}
 
 @app.get("/api/history")
@@ -995,17 +1166,62 @@ def get_neural_score(ticker: str = Path(..., pattern=r"^[A-Za-z0-9\.\-]{1,10}$")
         return {"cached": True, "data": cached}
 
     try:
-        # 1. Obtener XGBoost P(Win) buscando en el caché del escáner Titan 100
+        # BUG-002 fix: compute XGBoost score from real features instead of stale cache
         xgb_score = 50.0
-        scan_data = redis_get("scan:data:titan100")
-        if scan_data and "data" in scan_data:
-            for t in scan_data["data"]:
-                if t.get("ticker") == ticker:
-                    xgb_score = float(t.get("signal_strength_score", 50.0))
-                    break
+        try:
+            hist = yf.Ticker(ticker).history(period="2mo")
+            if len(hist) >= 30:
+                close = hist["Close"]
+                high = hist["High"]
+                low  = hist["Low"]
+                price_now = float(close.iloc[-1])
+                rsi_val = float(calculate_rsi(close).iloc[-1])
+                atr_val = _compute_atr(close, high, low)
+                momentum_10d = float(close.pct_change(10).iloc[-1]) * 100 if len(close) > 10 else 0.0
+
+                ema12 = close.ewm(span=12, adjust=False).mean()
+                ema26 = close.ewm(span=26, adjust=False).mean()
+                macd_h = float((ema12 - ema26 - (ema12 - ema26).ewm(span=9, adjust=False).mean()).iloc[-1])
+
+                features = {
+                    'log_return': 0.0,
+                    'volatility_20': atr_val / price_now if price_now > 0 else 0.0,
+                    'momentum_10': momentum_10d,
+                    'rsi_14': rsi_val,
+                    'macd_hist': macd_h,
+                }
+                xgb_score = float(compute_ml_score(features))
+        except Exception as e:
+            logger.warning(f"neural-score: could not compute features for {ticker}: {e}")
 
         # 2. Obtener Composite Score (XGBoost + LSTM)
         composite = get_composite_score(ticker, xgb_score)
+
+        xgb_val = composite["p_win_xgb"]
+        composite_val = composite["p_win_composite"]
+
+        if composite_val >= 55.0:
+            signal = "COMPRA"
+        elif composite_val <= 45.0:
+            signal = "VENTA"
+        else:
+            signal = "NEUTRAL"
+
+        scan = redis_get(f"scan:data:titan100")
+        plan_dir = None
+        if scan and "data" in scan:
+            for t in scan["data"]:
+                if t.get("ticker") == ticker:
+                    plan_dir = t.get("trade_plan", {}).get("direction")
+                    break
+
+        if signal != "NEUTRAL" and plan_dir:
+            alignment = "CONFIRMADO" if (
+                (signal == "COMPRA" and plan_dir == "LONG") or
+                (signal == "VENTA" and plan_dir == "SHORT")
+            ) else "DIVERGENTE"
+        else:
+            alignment = "NEUTRAL"
 
         result = {
             "ticker":          ticker,
@@ -1013,15 +1229,79 @@ def get_neural_score(ticker: str = Path(..., pattern=r"^[A-Za-z0-9\.\-]{1,10}$")
             "p_win_lstm":      composite["p_win_lstm"],
             "p_win_composite": composite["p_win_composite"],
             "model":           composite["model"],
-            "signal":          "COMPRA" if composite["p_win_composite"] >= 60.0 else
-                               "VENTA"  if composite["p_win_composite"] <= 40.0 else
-                               "NEUTRAL",
+            "signal":          signal,
+            "alignment":       alignment,
         }
-        redis_set(cache_key, result, 60)   # TTL 60s - se refresca cada minuto
+        redis_set(cache_key, result, 60)
         return {"cached": False, "data": result}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error calculando score neural: {e}")
+
+def _build_signal_overlays(ticker: str) -> list[dict]:
+    """
+    Construye los overlays de señales para el gráfico intraday.
+    Busca en el cache del scan los datos de lifecycle del ticker.
+    Retorna lista vacia si no hay senales.
+    """
+    overlays = []
+    try:
+        scan_data = redis_get("scan:data:titan100")
+        if not scan_data or "data" not in scan_data:
+            return []
+
+        for t in scan_data["data"]:
+            if t.get("ticker") != ticker:
+                continue
+
+            tracking = t.get("trade_tracking", {})
+            plan = t.get("trade_plan", {})
+            det_ts = t.get("signal_detected_at")
+            status = t.get("signal_status", "")
+
+            if not det_ts:
+                return []
+
+            overlay = {
+                "detected_at": det_ts,
+                "direction": plan.get("direction", ""),
+                "entry_price": plan.get("entry_price", 0),
+                "stop_loss": plan.get("stop_loss", 0),
+                "take_profit": plan.get("take_profit", 0),
+                "score_at_detection": t.get("signal_strength_score", 0),
+                "signal_type": t.get("situation", ""),
+                "status": status,
+                "entry_window": t.get("entry_window_status", ""),
+                "signal_expired": t.get("signal_expired", False),
+                "human_signal": t.get("human_signal", ""),
+                "suggested_action": t.get("suggested_action", ""),
+                "pnl_since_detection_pct": 0.0,
+                "pnl_since_detection_usd": 0.0,
+                "is_currently_winning": False,
+            }
+
+            entry = overlay["entry_price"]
+            current = t.get("price", 0)
+            if entry > 0 and current > 0:
+                direction = overlay["direction"]
+                if direction == "LONG":
+                    pnl_pct = ((current - entry) / entry) * 100
+                elif direction == "SHORT":
+                    pnl_pct = ((entry - current) / entry) * 100
+                else:
+                    pnl_pct = 0.0
+                overlay["pnl_since_detection_pct"] = round(pnl_pct, 2)
+                overlay["pnl_since_detection_usd"] = round(pnl_pct * entry / 100, 2)
+                overlay["is_currently_winning"] = pnl_pct > 0
+
+            overlays.append(overlay)
+            break
+
+    except Exception:
+        pass
+
+    return overlays
+
 
 @app.get("/api/ticker/{ticker}/intraday")
 def get_ticker_intraday(ticker: str = Path(..., pattern=r"^[A-Za-z0-9\.\-]{1,10}$"), period: str = "1d", interval: str = "1m"):
@@ -1035,6 +1315,8 @@ def get_ticker_intraday(ticker: str = Path(..., pattern=r"^[A-Za-z0-9\.\-]{1,10}
         "1mo": "1mo",
         "3m": "3mo",
         "3mo": "3mo",
+        "6m": "6mo",
+        "6mo": "6mo",
         "1y": "1y"
     }
     p = period_map.get(period.lower(), "1d")
@@ -1059,7 +1341,7 @@ def get_ticker_intraday(ticker: str = Path(..., pattern=r"^[A-Za-z0-9\.\-]{1,10}
     elif p == "1mo":
         if i not in {"30m", "60m", "1h"}:
             i = "30m"
-    elif p in {"3mo", "1y"}:
+    elif p in {"3mo", "6mo", "1y"}:
         i = "1d"
         
     cache_key = f"intraday:{ticker}:{p}:{i}"
@@ -1068,17 +1350,18 @@ def get_ticker_intraday(ticker: str = Path(..., pattern=r"^[A-Za-z0-9\.\-]{1,10}
     ttl = TTL_INTRADAY  # 10s default para 1d
     if p == "5d":
         ttl = 60       # 1 min para 5d
-    elif p in {"1mo", "3mo", "1y"}:
+    elif p in {"1mo", "3mo", "6mo", "1y"}:
         ttl = 300      # 5 min para timeframes superiores
         
     cached = redis_get(cache_key)
     if cached:
-        return {"cached": True, "data": cached}
+        overlays = _build_signal_overlays(ticker)
+        return {"cached": True, "data": cached, "signal_overlays": overlays}
         
     try:
         data = yf.download(tickers=ticker, period=p, interval=i, progress=False)
         if data.empty:
-            return {"data": []}
+            return {"data": [], "signal_overlays": []}
             
         data_reset = data.reset_index()
         data_reset.columns = [str(c[0]) if isinstance(c, tuple) else str(c) for c in data_reset.columns]
@@ -1127,13 +1410,14 @@ def get_ticker_intraday(ticker: str = Path(..., pattern=r"^[A-Za-z0-9\.\-]{1,10}
                 last_time = r["time"]
                 
         redis_set(cache_key, unique_records, ttl)
-        return {"cached": False, "data": unique_records}
+        overlays = _build_signal_overlays(ticker)
+        return {"cached": False, "data": unique_records, "signal_overlays": overlays}
     except Exception as e:
         print(f"[Intraday] Error fetching {ticker} ({p}/{i}): {e}")
-        return {"data": []}
+        return {"data": [], "signal_overlays": []}
 
 @app.get("/api/ticker/{ticker}/financials")
-def get_ticker_financials(ticker: str):
+def get_ticker_financials(ticker: str = Path(..., pattern=r"^[A-Za-z0-9\.\-]{1,10}$")):
     ticker = ticker.upper()
     cache_key = f"financials:{ticker}"
 
@@ -1182,10 +1466,11 @@ def get_sector_sync_status():
         return {"error": "Redis not reachable"}
 
 @app.get("/api/signal-evaluation")
-def get_signal_evaluation(market: str = DEFAULT_MARKET):
+async def get_signal_evaluation(market: str = DEFAULT_MARKET):
     """
     Evaluates signal probabilities historically.
-    This uses a heavy background calculation, so we cache it for 24 hours.
+    Heavy calculation runs in thread pool to avoid blocking the event loop.
+    Cached for 24 hours.
     """
     market = market.lower()
     if market not in MARKET_TICKERS:
@@ -1199,9 +1484,7 @@ def get_signal_evaluation(market: str = DEFAULT_MARKET):
         
     try:
         tickers = MARKET_TICKERS[market]
-        # This will block the event loop for a few seconds since we don't await to_thread, 
-        # but it only runs once per market per 24 hours.
-        results = evaluate_signals(tickers, period="2y")
+        results = await asyncio.to_thread(evaluate_signals, tickers, "2y")
         
         # Cache for 24 hours (86400 seconds)
         redis_set(cache_key, results, 86400)
@@ -1211,10 +1494,10 @@ def get_signal_evaluation(market: str = DEFAULT_MARKET):
         raise HTTPException(status_code=500, detail=f"Error evaluating signals: {str(e)}")
 
 @app.get("/api/strategy-optimization")
-def get_strategy_optimization(market: str = DEFAULT_MARKET):
+async def get_strategy_optimization(market: str = DEFAULT_MARKET):
     """
     Advanced statistical optimization of signals. 
-    Heavy blocking operation, cached for 6 hours.
+    Heavy blocking operation runs in thread pool, cached for 6 hours.
     """
     market = market.lower()
     if market not in MARKET_TICKERS:
@@ -1228,9 +1511,7 @@ def get_strategy_optimization(market: str = DEFAULT_MARKET):
         
     try:
         tickers = MARKET_TICKERS[market]
-        # Runs synchronously taking 30-60s on first fetch. 
-        # Caching prevents repeated blocking.
-        results = run_strategy_optimization(tickers, period="2y")
+        results = await asyncio.to_thread(run_strategy_optimization, tickers, "2y")
         
         # Cache for 6 hours (21600 seconds)
         redis_set(cache_key, results, 21600)
@@ -1256,3 +1537,44 @@ def get_system_analytics():
         return {"cached": False, "data": data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating analytics: {str(e)}")
+
+# ---------------------------------------------------------------------------
+# Model Info
+# ---------------------------------------------------------------------------
+@app.get("/api/model-info")
+def get_xgboost_model_info():
+    """Returns metadata about the XGBoost model (provenance, metrics, training date)."""
+    return get_model_info()
+
+# ---------------------------------------------------------------------------
+# WebSocket — Real-Time Market Data
+# ---------------------------------------------------------------------------
+_ws_clients: set[WebSocket] = set()
+
+
+@app.websocket("/ws/market")
+async def websocket_market(ws: WebSocket):
+    await ws.accept()
+    _ws_clients.add(ws)
+    scan_data = redis_get("scan:data:titan100") or redis_get("scan:data")
+    if scan_data:
+        await ws.send_json(scan_data)
+    try:
+        while True:
+            try:
+                await ws.receive_text()
+            except WebSocketDisconnect:
+                break
+    finally:
+        _ws_clients.discard(ws)
+
+
+async def _broadcast_scan(data: dict):
+    dead: list[WebSocket] = []
+    for ws in _ws_clients:
+        try:
+            await ws.send_json(data)
+        except Exception:
+            dead.append(ws)
+    for ws in dead:
+        _ws_clients.discard(ws)

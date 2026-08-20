@@ -33,6 +33,7 @@ def _detect_situation(t: dict) -> str:
     sma50     = t.get("sma50", 0.0)
     sma200    = t.get("sma200", 0.0)
     mom       = t.get("momentum_1m", 0.0)
+    context   = t.get("market_context_used", "neutral")
 
     # Priority order: strongest signals first
     if rsi < 30:
@@ -51,9 +52,13 @@ def _detect_situation(t: dict) -> str:
     if price < sma50 and mom < -5.0:
         return "breakdown"
     if composite >= 6 and not ma_brk:
-        return "strong_trend"
+        return "weak_signal" if context == "bearish" else "strong_trend"
     if score < 10 or (composite == 0 and not ma_brk):
         return "no_signal"
+    if price > sma50:
+        return "neutral_positive"
+    if price > sma200:
+        return "neutral_holding"
     return "weak_signal"
 
 
@@ -70,6 +75,8 @@ def _human_signal_label(situation: str) -> tuple[str, str]:
         "strong_trend":      ("TENDENCIA POSITIVA",    "✅"),
         "no_signal":         ("SIN SEÑAL CLARA",       "—"),
         "weak_signal":       ("SEÑAL DÉBIL",           "👀"),
+        "neutral_positive":  ("NEUTRAL ALCISTA",       "📊"),
+        "neutral_holding":   ("NEUTRAL ESTABLE",       "📊"),
     }
     return MAP.get(situation, ("SIN SEÑAL CLARA", "—"))
 
@@ -134,6 +141,11 @@ def _suggested_action(situation: str, score: float, ctx_adj: float) -> str:
             return "Tomar ganancias"
         return "Precaución"
 
+    if situation in ("neutral_positive", "neutral_holding"):
+        if score >= 55:
+            return "Vigilar"
+        return "Esperar"
+
     # ── Generic fallback ───────────────────────────────────────────────────
     if score >= 50:
         return "Vigilar antes de entrar" if adverse_market else "Vigilar"
@@ -171,6 +183,8 @@ def _holding_period(situation: str, signal_stats: Optional[dict]) -> str:
         "overbought":       "1 a 3 días",
         "strong_trend":     "10 a 20 días",
         "breakdown":        "Corto plazo",
+        "neutral_positive": "5 a 10 días",
+        "neutral_holding":  "10 a 20 días",
     }
     return HEURISTICS.get(situation, "Corto plazo")
 
@@ -266,6 +280,18 @@ def _explanation(situation: str, score: float, ctx_adj: float, t: dict) -> str:
             "La acción no presenta condiciones técnicas relevantes. Lo mejor es esperar."
         )
 
+    if situation == "neutral_positive":
+        return (
+            "La acción se mantiene sobre su media de 50 días, lo cual es una señal técnica positiva. "
+            "Sin embargo, no hay una señal de entrada específica. Observar de cerca."
+        )
+
+    if situation == "neutral_holding":
+        return (
+            "La acción se sostiene sobre su media de 200 días, pero por debajo de la de 50 días. "
+            "Zona de consolidación. Esperar una señal más clara."
+        )
+
     # weak_signal
     return (
         "El sistema detecta una señal leve, pero no lo suficientemente fuerte para actuar con confianza. "
@@ -298,8 +324,10 @@ def _decision_clarity(score: float, ctx_adj: float, situation: str, source: str)
     'media' → señal presente pero con algún factor limitante
     'baja'  → señal débil, contexto adverso, o sin datos históricos
     """
-    if situation in ("no_signal", "weak_signal") or source == "fallback":
+    if situation in ("no_signal",) or source == "fallback":
         return "baja"
+    if situation in ("weak_signal", "neutral_positive", "neutral_holding"):
+        return "baja" if ctx_adj <= -0.15 else "media"
     if score >= 55 and ctx_adj >= 0 and source == "optimized":
         return "alta"
     if score >= 35 and ctx_adj >= -0.15:

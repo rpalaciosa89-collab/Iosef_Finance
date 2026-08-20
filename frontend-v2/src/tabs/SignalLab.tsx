@@ -3,10 +3,8 @@
  * Tab de Signal Lab — muestra estadísticas de evaluación histórica de señales.
  */
 import { useEffect, useState } from 'react';
+import { apiFetch } from '../lib/api'
 import type { Market } from '../types/market';
-
-const HOST = window.location.hostname;
-const API_BASE = `http://${HOST}:8002/api`;
 
 interface SignalStats {
   total_signals: number;
@@ -32,9 +30,8 @@ export default function SignalLab({ market }: Props) {
 
   useEffect(() => {
     setLoading(true);
-    fetch(`${API_BASE}/signal-evaluation?market=${market}&_t=${Date.now()}`)
-      .then(r => r.json())
-      .then(setData)
+    apiFetch<{ data: LabResponse }>(`/signal-evaluation?market=${market}&_t=${Date.now()}`)
+      .then(res => setData(res.data))
       .catch(console.warn)
       .finally(() => setLoading(false));
   }, [market]);

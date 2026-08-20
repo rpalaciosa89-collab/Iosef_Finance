@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Shield, Lock } from 'lucide-react';
+import { apiFetchForm } from '../lib/api';
 
 const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -22,20 +23,8 @@ const LoginPage: React.FC = () => {
       formData.append('username', email);
       formData.append('password', password);
 
-      const response = await fetch('http://localhost:8002/api/auth/token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: formData.toString(),
-      });
-
-      if (!response.ok) {
-        throw new Error('Credenciales inválidas o acceso denegado.');
-      }
-
-      const data = await response.json();
-      login(data.access_token);
+      await apiFetchForm('/auth/token', formData);
+      login();
       navigate('/dashboard');
     } catch (err: any) {
       setError(err.message);

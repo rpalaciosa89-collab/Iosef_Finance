@@ -6,10 +6,9 @@
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { ScanResponse, Market, AlertItem } from '../types/market';
+import { apiFetch } from '../lib/api';
 
-const HOST = window.location.hostname;
-const API_BASE = `http://${HOST}:8002/api`;
-const WS_URL = `ws://${HOST}:8080/ws/market`;
+const WS_URL = `ws://${window.location.hostname}:8080/ws/market`;
 
 export type WsStatus = 'connecting' | 'live' | 'offline';
 
@@ -36,24 +35,25 @@ export function useMarketData(): UseMarketDataReturn {
   // ── REST fetch ──────────────────────────────────────────────
   const fetchScan = useCallback(async (m: Market) => {
     try {
-      const res = await fetch(`${API_BASE}/scan?market=${m}&_t=${Date.now()}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data: ScanResponse = await res.json();
+      const data = await apiFetch<ScanResponse>(`/scan?market=${m}&_t=${Date.now()}`);
       setScan(data);
       if (data.alerts?.length) {
         setAlerts(prev => [...data.alerts!, ...prev].slice(0, 50));
       }
       setLastUpdated(new Date());
+      // REST es la fuente principal de datos → marcar como LIVE
+      setWsStatus('live');
     } catch (err) {
       console.warn('[useMarketData] fetch failed:', err);
     }
   }, []);
 
   // ── WebSocket (realtime snapshots from Go service) ──────────
+  // Nota: El servicio Go (puerto 8080) aún no está implementado.
+  // El WebSocket es opcional; los datos fluyen por REST polling.
   const connectWs = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
-    setWsStatus('connecting');
     const ws = new WebSocket(WS_URL);
 
     ws.onopen = () => setWsStatus('live');
@@ -61,7 +61,6 @@ export function useMarketData(): UseMarketDataReturn {
     ws.onmessage = (evt) => {
       try {
         const msg = JSON.parse(evt.data);
-        // Go service emits full scan payloads
         if (msg.data && Array.isArray(msg.data)) {
           setScan(msg as ScanResponse);
           setLastUpdated(new Date());
@@ -70,13 +69,11 @@ export function useMarketData(): UseMarketDataReturn {
     };
 
     ws.onclose = () => {
-      setWsStatus('offline');
-      // Reconnect after 5s
+      // Solo marcar offline si no hay datos REST aún
       setTimeout(connectWs, 5000);
     };
 
     ws.onerror = () => {
-      setWsStatus('offline');
       ws.close();
     };
 

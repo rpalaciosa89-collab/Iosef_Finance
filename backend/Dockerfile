@@ -4,7 +4,7 @@ WORKDIR /app
 
 # Install system dependencies (for building some scientific packages if needed)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
+    build-essential git \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

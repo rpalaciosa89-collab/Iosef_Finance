@@ -1,17 +1,10 @@
-/**
- * components/TickerModal.tsx
- * Modal de detalle de ticker: gráfico IosefChart propio (sin TradingView),
- * señales, motor neural y pestaña de salud financiera.
- */
 import { useEffect, useState } from 'react';
 import type { TickerEntry } from '../types/market';
 import { IosefChart } from './IosefChart';
 import type { BarData } from './IosefChart';
 import { FinancialsTab } from './FinancialsTab';
 import { useAuth } from '../context/AuthContext';
-
-const HOST = window.location.hostname;
-const API_BASE = `http://${HOST}:8002/api`;
+import { apiFetch, apiFetchNoAuth } from '../lib/api';
 
 interface Props {
   ticker: TickerEntry;
@@ -21,7 +14,7 @@ interface Props {
 const TIMEFRAMES = ['1d', '5d', '1mo', '3mo', '6mo', '1y'];
 
 export function TickerModal({ ticker, onClose }: Props) {
-  const { token } = useAuth();
+  const { isAuthenticated } = useAuth();
   const [tf, setTf] = useState('1mo');
   const [loading, setLoading] = useState(true);
   const [bars, setBars] = useState<BarData[]>([]);
@@ -32,78 +25,55 @@ export function TickerModal({ ticker, onClose }: Props) {
     p_win_composite: number;
     model: string;
     signal: string;
+    alignment?: string;
   } | null>(null);
+
+  const [signalOverlays, setSignalOverlays] = useState<any[]>([]);
 
   const [backtestData, setBacktestData] = useState<any>(null);
   const [isBacktesting, setIsBacktesting] = useState(false);
   const [backtestError, setBacktestError] = useState<string | null>(null);
 
-  // Cargar velas históricas al cambiar ticker o timeframe
   useEffect(() => {
     setLoading(true);
     setBars([]);
-    fetch(`${API_BASE}/ticker/${ticker.ticker}/intraday?period=${tf}&_t=${Date.now()}`)
-      .then(r => r.json())
-      .then((d: { data?: Array<{ time: number; open: number; high: number; low: number; close: number; volume: number }> }) => {
+    setSignalOverlays([]);
+    apiFetchNoAuth<any>(`/ticker/${ticker.ticker}/intraday?period=${tf}&_t=${Date.now()}`)
+      .then((d) => {
         if (d.data && d.data.length > 0) {
-          // Convertir Unix timestamp a ISO string para IosefChart
-          const converted: BarData[] = d.data.map(b => ({
+          const converted: BarData[] = d.data.map((b: any) => ({
             time: new Date(b.time * 1000).toISOString(),
-            open: b.open,
-            high: b.high,
-            low: b.low,
-            close: b.close,
-            volume: b.volume,
+            open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume,
           }));
           setBars(converted);
+        }
+        if (d.signal_overlays && d.signal_overlays.length > 0) {
+          setSignalOverlays(d.signal_overlays);
         }
       })
       .catch(console.warn)
       .finally(() => setLoading(false));
   }, [ticker.ticker, tf]);
 
-
-  // Cargar Score del Motor Neural (XGBoost + LSTM Ensemble)
   useEffect(() => {
     setNeuralScore(null);
-    fetch(`${API_BASE}/neural-score/${ticker.ticker}`)
-      .then(r => r.json())
-      .then((d: { data?: typeof neuralScore }) => {
-        if (d.data) setNeuralScore(d.data);
-      })
+    apiFetchNoAuth<any>(`/neural-score/${ticker.ticker}`)
+      .then((d) => { if (d.data) setNeuralScore(d.data); })
       .catch(console.warn);
   }, [ticker.ticker]);
 
   const handleRunBacktest = async () => {
-    if (!token) {
-      setBacktestError("Acceso Denegado: Token de seguridad no encontrado.");
+    if (!isAuthenticated) {
+      setBacktestError("Acceso Denegado: Inicia sesión primero.");
       return;
     }
     setIsBacktesting(true);
     setBacktestError(null);
     try {
-      // 1 year backtest
       const end = new Date();
       const start = new Date();
       start.setFullYear(start.getFullYear() - 1);
-      
-      const res = await fetch(`${API_BASE}/backtest/${ticker.ticker}?start_date=${start.toISOString().split('T')[0]}&end_date=${end.toISOString().split('T')[0]}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      if (!res.ok) {
-        if (res.status === 401) {
-          throw new Error("Sesión expirada. Por favor, vuelve a iniciar sesión.");
-        }
-        let errMsg = "Error ejecutando el backtest en el backend.";
-        try {
-          const errData = await res.json();
-          if (errData.detail) errMsg = errData.detail;
-        } catch (e) {}
-        throw new Error(errMsg);
-      }
-      const data = await res.json();
+      const data = await apiFetch<any>(`/backtest/${ticker.ticker}?start_date=${start.toISOString().split('T')[0]}&end_date=${end.toISOString().split('T')[0]}`);
       setBacktestData(data.data);
     } catch (err: any) {
       setBacktestError(err.message);
@@ -112,7 +82,6 @@ export function TickerModal({ ticker, onClose }: Props) {
     }
   };
 
-  // Null-safe guards para evitar crashes de React (black screen bug)
   const plan = ticker.trade_plan ?? {
     direction: '', entry_price: 0, stop_loss: 0,
     take_profit: 0, sl_pct: 0, tp_pct: 0, risk_reward: 'N/A'
@@ -179,7 +148,7 @@ export function TickerModal({ ticker, onClose }: Props) {
                 <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 20 }}>
                   Ejecuta una simulación de 1 año sobre los datos históricos de {ticker.ticker} utilizando el algoritmo de cruce de medias como base de rentabilidad (PnL).
                 </p>
-                <button 
+                <button
                   onClick={handleRunBacktest}
                   disabled={isBacktesting}
                   style={{
@@ -247,7 +216,7 @@ export function TickerModal({ ticker, onClose }: Props) {
                 ))}
               </div>
 
-              {/* Motor Gráfico IosefChart (100% propio, sin TradingView) */}
+              {/* Motor Gráfico IosefChart */}
               {loading ? (
                 <div style={{
                   height: 360, display: 'flex',
@@ -257,7 +226,7 @@ export function TickerModal({ ticker, onClose }: Props) {
                   Cargando historial de precios...
                 </div>
               ) : (
-                <IosefChart data={bars} livePrice={ticker.price} />
+                <IosefChart data={bars} livePrice={ticker.price} signalOverlays={signalOverlays} />
               )}
 
               {/* Grid de Indicadores Técnicos */}
@@ -268,21 +237,36 @@ export function TickerModal({ ticker, onClose }: Props) {
                     label: 'Change', value: `${ticker.change_pct >= 0 ? '+' : ''}${ticker.change_pct.toFixed(2)}%`,
                     color: ticker.change_pct >= 0 ? 'var(--green)' : 'var(--red)'
                   },
-                  { label: 'RSI (14)', value: ticker.rsi.toFixed(1) },
-                  { label: 'SMA 20', value: `$${ticker.sma20.toFixed(2)}` },
-                  { label: 'SMA 50', value: `$${ticker.sma50.toFixed(2)}` },
-                  { label: 'SMA 200', value: `$${ticker.sma200.toFixed(2)}` },
+                  {
+                    label: 'RSI (14)', value: ticker.rsi.toFixed(1),
+                    color: ticker.rsi > 70 ? 'var(--red)' : ticker.rsi < 30 ? 'var(--green)' : undefined,
+                    hint: ticker.rsi > 70 ? 'Sobrecomprado' : ticker.rsi < 30 ? 'Sobrevendido' : undefined,
+                  },
+                  { label: 'SMA 20', value: `$${ticker.sma20.toFixed(2)}`,
+                    color: ticker.price > ticker.sma20 ? 'var(--green)' : 'var(--red)',
+                    hint: ticker.price > ticker.sma20 ? '▲ Sobre' : '▼ Bajo',
+                  },
+                  { label: 'SMA 50', value: `$${ticker.sma50.toFixed(2)}`,
+                    color: ticker.price > ticker.sma50 ? 'var(--green)' : 'var(--red)',
+                    hint: ticker.price > ticker.sma50 ? '▲ Sobre' : '▼ Bajo',
+                  },
+                  { label: 'SMA 200', value: `$${ticker.sma200.toFixed(2)}`,
+                    color: ticker.price > ticker.sma200 ? 'var(--green)' : 'var(--red)',
+                    hint: ticker.price > ticker.sma200 ? '▲ Sobre' : '▼ Bajo',
+                  },
                   { label: 'Rel Volume', value: `${ticker.relative_volume.toFixed(2)}x` },
                   {
                     label: 'Momentum 1M', value: `${ticker.momentum_1m >= 0 ? '+' : ''}${ticker.momentum_1m.toFixed(2)}%`,
                     color: ticker.momentum_1m >= 0 ? 'var(--green)' : 'var(--red)'
                   },
-                  { label: 'Prob. P(Win)', value: `${ticker.signal_strength_score.toFixed(1)}%` },
+                  { label: 'Prob. P(Win)', value: `${ticker.signal_strength_score.toFixed(1)}%`,
+                    hint: 'Score ML: mide probabilidad de superar rendimiento típico en 5 días' },
                   { label: 'Signal Status', value: ticker.signal_status?.toUpperCase() || '–' },
-                ].map(({ label, value, color }) => (
+                ].map(({ label, value, color, hint }) => (
                   <div key={label} className="detail-card">
                     <div className="label">{label}</div>
-                    <div className="value" style={color ? { color } : undefined}>{value}</div>
+                    <div className="value" style={color ? { color } : undefined} title={hint}>{value}</div>
+                    {hint && <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginTop: 2 }}>{hint}</div>}
                   </div>
                 ))}
               </div>
@@ -305,19 +289,19 @@ export function TickerModal({ ticker, onClose }: Props) {
                       {
                         label: 'P(Win) XGBoost',
                         value: `${(neuralScore.p_win_xgb).toFixed(1)}%`,
-                        color: neuralScore.p_win_xgb >= 60 ? 'var(--green)' : neuralScore.p_win_xgb <= 40 ? 'var(--red)' : 'var(--amber)',
+                        color: neuralScore.p_win_xgb >= 55 ? 'var(--green)' : neuralScore.p_win_xgb <= 45 ? 'var(--red)' : 'var(--amber)',
                       },
                       {
                         label: 'P(Win) LSTM',
                         value: neuralScore.p_win_lstm !== null ? `${(neuralScore.p_win_lstm).toFixed(1)}%` : '—',
                         color: neuralScore.p_win_lstm !== null
-                          ? neuralScore.p_win_lstm >= 60 ? 'var(--green)' : neuralScore.p_win_lstm <= 40 ? 'var(--red)' : 'var(--amber)'
+                          ? neuralScore.p_win_lstm >= 55 ? 'var(--green)' : neuralScore.p_win_lstm <= 45 ? 'var(--red)' : 'var(--amber)'
                           : 'var(--text-tertiary)',
                       },
                       {
                         label: 'Score Ensemble',
                         value: `${(neuralScore.p_win_composite).toFixed(1)}%`,
-                        color: neuralScore.p_win_composite >= 60 ? 'var(--green)' : neuralScore.p_win_composite <= 40 ? 'var(--red)' : 'var(--amber)',
+                        color: neuralScore.p_win_composite >= 55 ? 'var(--green)' : neuralScore.p_win_composite <= 45 ? 'var(--red)' : 'var(--amber)',
                       },
                       {
                         label: 'Señal',
@@ -334,6 +318,28 @@ export function TickerModal({ ticker, onClose }: Props) {
                 ) : (
                   <div style={{ color: 'var(--text-tertiary)', fontSize: 12, textAlign: 'center', padding: '8px 0' }}>
                     Calculando score neural…
+                  </div>
+                )}
+
+                {neuralScore?.alignment && (
+                  <div style={{
+                    marginTop: 10,
+                    padding: '6px 10px',
+                    borderRadius: 4,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    background: neuralScore.alignment === 'CONFIRMADO' ? 'rgba(0, 200, 150, 0.1)' :
+                                 neuralScore.alignment === 'DIVERGENTE' ? 'rgba(255, 150, 50, 0.1)' :
+                                 'rgba(128, 128, 128, 0.1)',
+                    border: neuralScore.alignment === 'CONFIRMADO' ? '1px solid rgba(0, 200, 150, 0.3)' :
+                            neuralScore.alignment === 'DIVERGENTE' ? '1px solid rgba(255, 150, 50, 0.3)' :
+                            '1px solid rgba(128, 128, 128, 0.2)',
+                    color: neuralScore.alignment === 'CONFIRMADO' ? 'var(--green)' :
+                           neuralScore.alignment === 'DIVERGENTE' ? '#ff9632' : 'var(--text-tertiary)',
+                  }}>
+                    {neuralScore.alignment === 'CONFIRMADO' && '✅ Consistente con el plan de trading'}
+                    {neuralScore.alignment === 'DIVERGENTE' && '⚠️ El modelo difiere del análisis técnico. Considere reducir posición.'}
+                    {neuralScore.alignment === 'NEUTRAL' && 'Sin dirección clara — espere una señal más definida.'}
                   </div>
                 )}
               </div>
@@ -357,6 +363,42 @@ export function TickerModal({ ticker, onClose }: Props) {
                       </div>
                     ))}
                   </div>
+                  {isAuthenticated && (
+                    <div style={{ marginTop: 12, textAlign: 'right' }}>
+                      <button
+                        onClick={async () => {
+                          try {
+                            await apiFetch('/paper-trading/execute', {
+                              method: 'POST',
+                              body: JSON.stringify({
+                                ticker: ticker.ticker,
+                                direction: plan.direction,
+                                quantity: 10,
+                                entry_price: plan.entry_price,
+                                stop_loss: plan.stop_loss,
+                                take_profit: plan.take_profit,
+                              }),
+                            });
+                            alert(`✅ Orden simulada ejecutada para ${ticker.ticker}`);
+                          } catch (err: any) {
+                            alert(`Error: ${err.message}`);
+                          }
+                        }}
+                        style={{
+                          padding: '8px 18px',
+                          background: 'var(--bg-1)',
+                          color: 'var(--text-primary)',
+                          border: '1px solid var(--border)',
+                          borderRadius: 6,
+                          cursor: 'pointer',
+                          fontSize: 12,
+                          fontWeight: 600,
+                        }}
+                      >
+                        📝 Simular esta operación
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
 

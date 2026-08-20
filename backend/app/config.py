@@ -19,8 +19,12 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite:///../data/iosef_finance.db"
     
     # Secret keys and Auth
-    SECRET_KEY: str = "change_me_to_a_secure_random_key_in_production"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8  # 8 days
+    JWT_SECRET_KEY: str = ""
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
+    JWT_COOKIE_NAME: str = "iosef_access_token"
+    JWT_COOKIE_SECURE: bool = False  # True in production (HTTPS only)
+    AUTH_RATE_LIMIT_REQUESTS: int = 10
+    AUTH_RATE_LIMIT_WINDOW: int = 60  # seconds
 
     # DeepSeek / LLM configuration
     DEEPSEEK_API_URL: str = "https://api.deepseek.example"  # override in .env

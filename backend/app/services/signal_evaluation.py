@@ -197,6 +197,11 @@ def evaluate_signals(tickers: list[str], period: str = "2y") -> dict:
         r5 = r5[~np.isnan(r5)]
         r20 = r20[~np.isnan(r20)]
 
+        # BUG-003/010 fix: winsorize extreme returns to prevent outliers from skewing means
+        r5_clipped = np.clip(r5, -0.50, 0.50)   # cap at ±50% per 5-day period
+        r1_clipped = np.clip(r1, -0.10, 0.10)
+        r20_clipped = np.clip(r20, -1.00, 1.00)
+
         wr1 = float((r1 > 0).mean()) if len(r1) > 0 else 0
         wr5 = float((r5 > 0).mean()) if len(r5) > 0 else 0
         wr20 = float((r20 > 0).mean()) if len(r20) > 0 else 0
@@ -209,8 +214,9 @@ def evaluate_signals(tickers: list[str], period: str = "2y") -> dict:
             if ctx_count > 0:
                 ctx_r5 = ret_5d[combined].values
                 ctx_r5 = ctx_r5[~np.isnan(ctx_r5)]
+                ctx_r5_clipped = np.clip(ctx_r5, -0.50, 0.50)
                 ctx_wr = float((ctx_r5 > 0).mean()) if len(ctx_r5) > 0 else 0
-                ctx_avg = float(np.mean(ctx_r5) * 100) if len(ctx_r5) > 0 else 0
+                ctx_avg = float(np.mean(ctx_r5_clipped) * 100) if len(ctx_r5_clipped) > 0 else 0
                 context_data[ctx_name] = {
                     "win_rate": round(ctx_wr, 4),
                     "avg_return": round(ctx_avg, 2),
@@ -263,9 +269,9 @@ def evaluate_signals(tickers: list[str], period: str = "2y") -> dict:
             "win_rate_1d": round(wr1, 4),
             "win_rate_5d": round(wr5, 4),
             "win_rate_20d": round(wr20, 4),
-            "avg_return_1d": round(float(np.mean(r1) * 100), 2) if len(r1) else 0,
-            "avg_return_5d": round(float(np.mean(r5) * 100), 2) if len(r5) else 0,
-            "avg_return_20d": round(float(np.mean(r20) * 100), 2) if len(r20) else 0,
+            "avg_return_1d": round(float(np.mean(r1_clipped) * 100), 2) if len(r1_clipped) else 0,
+            "avg_return_5d": round(float(np.mean(r5_clipped) * 100), 2) if len(r5_clipped) else 0,
+            "avg_return_20d": round(float(np.mean(r20_clipped) * 100), 2) if len(r20_clipped) else 0,
             "median_return_5d": round(float(np.median(r5) * 100), 2) if len(r5) else 0,
             "context": context_data,
             "best_context": best_context,

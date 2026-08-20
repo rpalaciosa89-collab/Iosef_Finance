@@ -90,10 +90,10 @@ def _build_features(df: pd.DataFrame) -> pd.DataFrame | None:
         (df["volume_log"].rolling(60).std() + 1e-9)
     )
 
-    # RSI 14
+    # RSI 14 — Wilder's smoothing (EWM), unified with server.py and signal_evaluation.py
     delta = df["close"].diff()
-    gain  = delta.clip(lower=0).rolling(14).mean()
-    loss  = (-delta.clip(upper=0)).rolling(14).mean()
+    gain  = delta.clip(lower=0).ewm(alpha=1/14, adjust=False).mean()
+    loss  = (-delta.clip(upper=0)).ewm(alpha=1/14, adjust=False).mean()
     df["rsi_14"] = 100 - (100 / (1 + gain / (loss + 1e-9)))
 
     # MACD Histogram

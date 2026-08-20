@@ -3,9 +3,7 @@
  * Tab de Analytics — historial de trades con métricas de rendimiento.
  */
 import { useEffect, useState } from 'react';
-
-const HOST = window.location.hostname;
-const API_BASE = `http://${HOST}:8002/api`;
+import { apiFetch } from '../lib/api'
 
 interface AnalyticsPayload {
   signal_analytics: Record<string, { total_trades: number; effective_win_rate: number; avg_pnl: number; expiry_rate: number }>;
@@ -18,8 +16,7 @@ export default function Analytics() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`${API_BASE}/analytics&_t=${Date.now()}`)
-      .then(r => r.json())
+    apiFetch<AnalyticsPayload>(`/analytics?_t=${Date.now()}`)
       .then(setData)
       .catch(console.warn)
       .finally(() => setLoading(false));
@@ -62,6 +59,22 @@ export default function Analytics() {
           </ul>
         </div>
       )}
+
+      <div style={{
+        background: 'rgba(255, 180, 50, 0.06)',
+        border: '1px solid rgba(255, 180, 50, 0.15)',
+        borderRadius: 6,
+        padding: '8px 14px',
+        marginBottom: 16,
+        fontSize: 11,
+        color: 'var(--text-tertiary)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+      }}>
+        <span>ℹ️</span>
+        <span>Los datos de rendimiento provienen de simulación histórica (backtesting). No reflejan operaciones reales. Utilícelos como referencia, no como garantía.</span>
+      </div>
 
       {/* Signal Performance Table */}
       {signals.length > 0 && (

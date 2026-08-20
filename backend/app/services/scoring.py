@@ -1,4 +1,5 @@
 import joblib
+import json
 import logging
 import pandas as pd
 from pathlib import Path
@@ -6,14 +7,35 @@ import xgboost as xgb
 
 logger = logging.getLogger(__name__)
 
-# Preload XGBoost model
 MODEL_PATH = Path(__file__).resolve().parent.parent.parent / "models" / "xgboost_signal_scorer.pkl"
+META_PATH = Path(__file__).resolve().parent.parent.parent / "models" / "xgboost_signal_scorer_meta.json"
+
 try:
     xgb_model = joblib.load(MODEL_PATH)
     logger.info("Modelo XGBoost cargado con éxito para inferencia.")
 except Exception as e:
     logger.warning(f"No se pudo cargar el modelo XGBoost: {e}")
     xgb_model = None
+
+
+def _load_model_meta() -> dict:
+    try:
+        if META_PATH.exists():
+            return json.loads(META_PATH.read_text())
+    except Exception:
+        pass
+    return {}
+
+
+def get_model_info() -> dict:
+    meta = _load_model_meta()
+    return {
+        "model_source": meta.get("source", "synthetic"),
+        "trained_at": meta.get("trained_at", ""),
+        "n_samples": meta.get("n_samples", 0),
+        "n_tickers": meta.get("n_tickers", 0),
+        "roc_auc": meta.get("roc_auc", 0.0),
+    }
 
 def compute_ml_score(features: dict) -> float:
     """

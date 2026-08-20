@@ -9,6 +9,7 @@ import { SidePanel } from './components/SidePanel';
 import { StatusBar } from './components/StatusBar';
 import { TickerModal } from './components/TickerModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { ActionableConclusions } from './components/ActionableConclusions';
 import type { TickerEntry } from './types/market';
 import LoginPage from './pages/Login';
 import './index.css';
@@ -21,7 +22,7 @@ const PaperTrading = lazy(() => import('./tabs/PaperTrading').then(m => ({ defau
 type Tab = 'screener' | 'lab' | 'analytics' | 'paper';
 
 function Dashboard() {
-  const { scan, alerts, wsStatus, lastUpdated, market, setMarket } = useMarketData();
+  const { scan, alerts, wsStatus, lastUpdated, market } = useMarketData();
   const [activeTab, setActiveTab] = useState<Tab>('screener');
   const [selectedTicker, setSelectedTicker] = useState<TickerEntry | null>(null);
   const { logout } = useAuth();
@@ -52,7 +53,13 @@ function Dashboard() {
       <div className="app-layout">
         <main className="main-panel">
           {activeTab === 'screener' && (
-            <ScreenerTable data={data} onRowClick={setSelectedTicker} />
+            <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+              <ActionableConclusions data={data} />
+              {/* flex:1 + minHeight:0 allows the table-wrap inside to get a bounded height and scroll */}
+              <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+                <ScreenerTable data={data} onRowClick={setSelectedTicker} />
+              </div>
+            </div>
           )}
 
           {activeTab !== 'screener' && (
@@ -106,7 +113,10 @@ function Dashboard() {
 }
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isLoading } = useAuth();
+  if (isLoading) {
+    return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'var(--text-tertiary)' }}>Verificando sesión...</div>;
+  }
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }

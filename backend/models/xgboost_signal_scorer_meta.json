@@ -1,0 +1,1 @@
+{"source": "real_market_yfinance", "trained_at": "2026-06-10T16:59:22.828226+00:00", "n_samples": 37458, "n_tickers": 98, "roc_auc": 0.5518620235708608, "features": ["log_return", "volatility_20", "momentum_10", "rsi_14", "macd_hist"], "forward_days": 5}
