@@ -29,7 +29,15 @@ jobs:
           JWT_SECRET_KEY: ci-test-key
           REDIS_HOST: localhost
           REDIS_PORT: 6379
+          DATABASE_URL: sqlite:///./ci_test.db
         run: python -m pytest tests/ -v
+      - name: Alembic no-drift check
+        env:
+          DATABASE_URL: sqlite:///./ci_migrations.db
+        run: |
+          rm -f ci_migrations.db
+          python -m alembic upgrade head
+          python -m alembic check
 
   frontend:
     runs-on: ubuntu-latest

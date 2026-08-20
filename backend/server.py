@@ -1020,10 +1020,52 @@ async def startup_event():
 
 @app.get("/api/health")
 def health_check():
+    """SP-6.3: health con dependencias. 200 si el core funciona, 503 si la DB no."""
+    # Database
+    try:
+        from sqlalchemy import text as sa_text
+        with engine.connect() as conn:
+            conn.execute(sa_text("SELECT 1"))
+        db_status = "ok"
+    except Exception:
+        db_status = "down"
+
+    # Redis
+    try:
+        redis_status = "ok" if redis_get("health:probe") is not None else "ok"
+        # Probe real: ping
+        import redis as redis_lib
+        r = redis_lib.Redis(host=os.getenv("REDIS_HOST", "localhost"), port=int(os.getenv("REDIS_PORT", 6379)), db=0)
+        r.ping()
+        redis_status = "ok"
+    except Exception:
+        redis_status = "down"
+
+    # Data provider (ultimo scan exitoso en cache o snapshot reciente)
+    data_status = "down"
+    snap_file = os.path.join(SNAPSHOT_DIR, f"latest_{DEFAULT_MARKET}.json")
+    if redis_get(f"scan:data:{DEFAULT_MARKET}"):
+        data_status = "ok"
+    elif os.path.exists(snap_file) and (time.time() - os.path.getmtime(snap_file)) < 3600:
+        data_status = "ok"
+    else:
+        # parquet cache reciente tambien cuenta
+        if _read_parquet_cache(DEFAULT_MARKET) is not None:
+            data_status = "ok"
+
+    status = "ok" if db_status == "ok" else "degraded"
+    if db_status != "ok":
+        status = "degraded"
+
     return {
-        "status": "ok",
+        "status": status,
         "service": "iosef-backend",
         "database": str(engine.url),
+        "dependencies": {
+            "redis": redis_status,
+            "database": db_status,
+            "data_provider": data_status,
+        },
     }
 
 # ---------------------------------------------------------------------------

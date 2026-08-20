@@ -1,5 +1,4 @@
 import pytest
-from fastapi.testclient import TestClient
 
 from app.core.validators import TICKER_PATTERN, validate_ticker
 from app.schemas.paper_trading import ExecuteTradeRequest
@@ -40,25 +39,20 @@ def test_execute_trade_schema_accepts_valid():
     assert req.ticker == "AAPL"
 
 
-def test_backtest_endpoint_rejects_bad_ticker():
-    """Sin token valido el endpoint devuelve 401 antes de tocar el ticker;
-    con ticker invalido no debe llegar a ejecutar el backtest."""
-    import server
-
-    with TestClient(server.app) as tc:
-        resp = tc.get(
-            "/api/backtest/AAPL%27%3B%20DROP%20TABLE",
-            headers={"Authorization": "Bearer invalid"},
-        )
-    assert resp.status_code == 401
+def test_backtest_endpoint_rejects_bad_ticker(client):
+    """Ticker invalido es rechazado. Sin token valido, la auth (401) gana antes de la validacion.
+    Con token valido, la validacion de formato (422) protege la ruta."""
+    resp = client.get(
+        "/api/backtest/AAPL%27%3B%20DROP%20TABLE",
+        headers={"Authorization": "Bearer invalid"},
+    )
+    assert resp.status_code == 401  # auth evaluada primero (seguro: no llega al backtest)
 
 
-def test_backtest_endpoint_accepts_valid_format():
-    import server
-
-    with TestClient(server.app) as tc:
-        resp = tc.get(
-            "/api/backtest/AAPL",
-            headers={"Authorization": "Bearer invalid"},
-        )
+def test_backtest_endpoint_accepts_valid_format(client):
+    """Ticker valido pasa la validacion de formato (llega a auth -> 401 sin token)."""
+    resp = client.get(
+        "/api/backtest/AAPL",
+        headers={"Authorization": "Bearer invalid"},
+    )
     assert resp.status_code == 401
