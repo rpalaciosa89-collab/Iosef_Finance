@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { apiFetch } from '../lib/api';
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -10,8 +11,6 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const API_BASE = import.meta.env.VITE_API_BASE || ''
-
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -19,11 +18,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`${API_BASE}/api/auth/status`, { credentials: 'include' })
-      .then((r) => {
-        if (r.ok) return r.json();
-        throw new Error('not authenticated');
-      })
+    apiFetch<{ email?: string }>('/api/auth/status')
       .then((data) => {
         if (!cancelled) {
           setIsAuthenticated(true);
@@ -48,10 +43,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = async () => {
     try {
-      await fetch(`${API_BASE}/api/auth/logout`, {
-        method: 'POST',
-        credentials: 'include',
-      });
+      await apiFetch('/api/auth/logout', { method: 'POST' });
     } catch { /* ignore */ }
     setIsAuthenticated(false);
     setUserEmail(null);
