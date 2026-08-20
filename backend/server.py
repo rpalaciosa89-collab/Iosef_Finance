@@ -957,50 +957,13 @@ async def background_scanner():
 
 # ---------------------------------------------------------------------------
 # Parquet-based disk cache for yfinance data (faster than JSON fallback)
+# Implementación en app/services/parquet_cache.py (fix SP-3.1)
 # ---------------------------------------------------------------------------
-PARQUET_CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "cache", "parquet")
-os.makedirs(PARQUET_CACHE_DIR, exist_ok=True)
-PARQUET_CACHE_TTL = 60  # seconds, same as scan interval
-
-def _parquet_cache_path(market: str) -> str:
-    return os.path.join(PARQUET_CACHE_DIR, f"scan_{market}.parquet")
-
-def _write_parquet_cache(market: str, payload: dict) -> None:
-    """Write scan results as Parquet + metadata JSON for fast reload."""
-    try:
-        import pyarrow as pa
-        import pyarrow.parquet as pq
-        data = payload.get("data", [])
-        if data:
-            table = pa.Table.from_pydict({k: [d[k] for d in data] for k in data[0].keys()})
-            pq.write_table(table, _parquet_cache_path(market))
-        meta_path = _parquet_cache_path(market).replace(".parquet", "_meta.json")
-        with open(meta_path, "w") as f:
-            json.dump({"timestamp": payload["timestamp"], "market": payload["market"], "alerts": payload.get("alerts", [])}, f)
-    except ImportError:
-        pass  # pyarrow not installed, skip parquet
-    except Exception as e:
-        print(f"[parquet] Write error for {market}: {e}")
-
-def _read_parquet_cache(market: str) -> Optional[dict]:
-    """Restore scan results from Parquet cache (much faster than JSON for large datasets)."""
-    try:
-        import pyarrow.parquet as pq
-        parq_path = _parquet_cache_path(market)
-        meta_path = parq_path.replace(".parquet", "_meta.json")
-        if os.path.exists(parq_path) and os.path.exists(meta_path):
-            cache_mtime = os.path.getmtime(parq_path)
-            if time.time() - cache_mtime < PARQUET_CACHE_TTL:
-                table = pq.read_table(parq_path)
-                data = table.to_pylist()
-                with open(meta_path) as f:
-                    meta = json.load(f)
-                return {**meta, "data": data}
-    except ImportError:
-        pass
-    except Exception as e:
-        print(f"[parquet] Read error for {market}: {e}")
-    return None
+from app.services.parquet_cache import (
+    PARQUET_CACHE_DIR, PARQUET_CACHE_TTL,
+    write_parquet_cache as _write_parquet_cache,
+    read_parquet_cache as _read_parquet_cache,
+)
 
 # ---------------------------------------------------------------------------
 # App
