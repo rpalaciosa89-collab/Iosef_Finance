@@ -71,3 +71,7 @@ data/*.json
 backend/*.db
 *.db
 !data/.gitkeep
+
+# SQLite WAL artifacts
+*.db-shm
+*.db-wal
