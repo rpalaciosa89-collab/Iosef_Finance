@@ -32,6 +32,7 @@ from datetime import datetime, timezone
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from config.titan_universe import TITAN_100
+from app.services.ml_validation import evaluate_walk_forward
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -146,12 +147,19 @@ def extract_features_and_labels(ticker_data: dict[str, pd.DataFrame]) -> tuple[p
         median_fwd = ticker_df["forward_return_5d"].median()
         ticker_df["label"] = (ticker_df["forward_return_5d"] > median_fwd).astype(int)
         ticker_df["ticker"] = ticker
+        # Conservar el indice temporal (fecha) para la validacion walk-forward
+        ticker_df.index = pd.to_datetime(df.index[df.index.isin(ticker_df.index)]) \
+            if len(df.index[df.index.isin(ticker_df.index)]) == len(ticker_df) \
+            else pd.to_datetime(ticker_df.index)
         rows.append(ticker_df)
 
     if not rows:
         raise RuntimeError("No ticker had enough data after feature extraction")
 
-    combined = pd.concat(rows, ignore_index=True)
+    combined = pd.concat(rows, ignore_index=False)
+    if not isinstance(combined.index, pd.DatetimeIndex):
+        combined.index = pd.to_datetime(combined.index)
+    combined = combined.sort_index()
 
     logger.info(
         f"Extracted {len(combined)} samples from {len(rows)} tickers. "
@@ -165,13 +173,19 @@ def extract_features_and_labels(ticker_data: dict[str, pd.DataFrame]) -> tuple[p
 
 
 def train_model():
-    logger.info("=== Iosef Finance XGBoost Training Pipeline (Real Data) ===")
+    logger.info("=== Iosef Finance XGBoost Training Pipeline (Real Data + Walk-Forward) ===")
 
     ticker_data = download_ticker_data(TITAN_100, period="2y")
     logger.info(f"Downloaded data for {len(ticker_data)}/{len(TITAN_100)} tickers")
 
     X, y = extract_features_and_labels(ticker_data)
 
+    # ── Validación walk-forward (SP-4.2): AUC OOS con purge+embargo ─────────
+    wf_meta = evaluate_walk_forward(X, y, n_splits=3, embargo_days=FORWARD_DAYS)
+    logger.info(f"Walk-forward OOS AUC: {wf_meta['auc_oos_mean']:.4f} ± {wf_meta['auc_oos_std']:.4f} "
+                f"({wf_meta['cv_folds']} folds, embargo {wf_meta['embargo_days']}d)")
+
+    # ── Entrenamiento final (train/test aleatorio, para el modelo vigente) ──
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42, stratify=y
     )
@@ -204,9 +218,11 @@ def train_model():
 
     logger.info("=" * 50)
     logger.info("Model Evaluation (Real Market Data):")
-    logger.info(f"  Accuracy:  {acc:.4f}")
-    logger.info(f"  Precision: {prec:.4f}")
-    logger.info(f"  ROC AUC:   {auc:.4f}")
+    logger.info(f"  Accuracy:      {acc:.4f}")
+    logger.info(f"  Precision:     {prec:.4f}")
+    logger.info(f"  ROC AUC (test): {auc:.4f}")
+    logger.info(f"  AUC OOS (WF):  {wf_meta['auc_oos_mean']:.4f}")
+    logger.info(f"  Promoted:      {wf_meta['promoted']}")
     logger.info("=" * 50)
 
     joblib.dump(model, MODEL_PATH)
@@ -218,15 +234,21 @@ def train_model():
         "n_samples": int(len(X_train)),
         "n_tickers": int(len(ticker_data)),
         "roc_auc": float(auc),
+        "auc_oos_mean": wf_meta["auc_oos_mean"],
+        "auc_oos_std": wf_meta["auc_oos_std"],
+        "cv_folds": wf_meta["cv_folds"],
+        "embargo_days": wf_meta["embargo_days"],
+        "promoted": wf_meta["promoted"],
         "features": ["log_return", "volatility_20", "momentum_10", "rsi_14", "macd_hist"],
         "forward_days": FORWARD_DAYS,
     }))
     logger.info(f"Metadata saved to {META_PATH}")
 
-    if auc > 0.52:
-        logger.info("✅ Model performs above random (AUC > 0.5). Real signal detected.")
+    if wf_meta["promoted"]:
+        logger.info("✅ Gate superado (AUC OOS >= 0.56). Modelo PROMOVIDO a producción.")
     else:
-        logger.warning("⚠️  AUC near 0.5 — market efficiency limit. Model still valid for ranking.")
+        logger.warning("⚠️  Gate NO superado. Modelo ARCHIVADO; ML score devolverá 50 (sin señal) "
+                       "hasta que un retrain supere el umbral.")
 
 
 if __name__ == "__main__":

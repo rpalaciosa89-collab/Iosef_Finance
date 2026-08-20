@@ -35,14 +35,27 @@ def get_model_info() -> dict:
         "n_samples": meta.get("n_samples", 0),
         "n_tickers": meta.get("n_tickers", 0),
         "roc_auc": meta.get("roc_auc", 0.0),
+        "auc_oos_mean": meta.get("auc_oos_mean", None),
+        "auc_oos_std": meta.get("auc_oos_std", None),
+        "cv_folds": meta.get("cv_folds", 0),
+        "embargo_days": meta.get("embargo_days", 0),
+        "promoted": bool(meta.get("promoted", True)),  # backward compat: si no hay gate, asumir legacy
+        "status": "promoted" if meta.get("promoted", True) else "archived",
     }
 
 def compute_ml_score(features: dict) -> float:
     """
     Inferencia de Machine Learning: Calcula P(Win) usando XGBoost.
+    SP-4.2: si el modelo no esta `promoted` (gate AUC OOS < 0.56), devuelve
+    el fallback 50.0 (sin señal) en lugar de usar un modelo sin edge.
     """
     if xgb_model is None:
         return 50.0  # Fallback si no hay modelo
+
+    meta = _load_model_meta()
+    if meta.get("promoted") is False:
+        logger.info("Modelo archivado (gate AUC no superado); score ML desactivado.")
+        return 50.0
         
     try:
         # Expected features: log_return, volatility_20, momentum_10, rsi_14, macd_hist
