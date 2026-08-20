@@ -1,7 +1,8 @@
 import sqlite3
 import os
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "trades_history.db")
+# SP-6.1: analytics lee de la MISMA DB unificada que persistence/SQLAlchemy
+from app.services.persistence import DB_PATH
 
 def get_db_connection():
     conn = sqlite3.connect(DB_PATH)

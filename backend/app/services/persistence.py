@@ -4,7 +4,17 @@ import logging
 from typing import Dict, Any, List
 from datetime import datetime, timezone
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "trades_history.db")
+# SP-6.1: unificacion de persistencia — los trades se guardan en la MISMA DB
+# que SQLAlchemy (backend/iosef_finance.db), eliminando el archivo legacy
+# backend/data/trades_history.db como fuente de verdad paralela.
+from app.db.database import DATABASE_URL
+
+if DATABASE_URL.startswith("sqlite"):
+    _db_file = DATABASE_URL.replace("sqlite:///", "").replace("./", "")
+    DB_PATH = os.path.join(os.getcwd(), _db_file) if not os.path.isabs(_db_file) else _db_file
+else:
+    # Postgres: usar archivo local de trades como fallback (migrar luego a tabla SQLAlchemy)
+    DB_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "trades_history.db")
 
 def init_db():
     """Initializes the SQLite database, creates the trades table, and cleans up invalid/TEST records."""
