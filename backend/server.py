@@ -10,6 +10,7 @@ Architecture:
 
 import asyncio
 import json
+import logging
 import os
 import time
 from typing import Optional
@@ -32,6 +33,9 @@ from app.services import analytics
 from app.services.scoring import compute_signal_score, compute_ml_score, get_model_info
 from app.services.scoring_engine import score_ticker
 from app.services.jobs import run_async_job, get_job, list_jobs
+from app.services.drift_monitor import check_model_drift
+
+logger = logging.getLogger(__name__)
 from app.services.human_layer import translate_ticker, _detect_situation
 from app.services import persistence
 from app.services.lstm_inference import get_composite_score, get_lstm_score
@@ -1618,8 +1622,14 @@ def get_system_analytics():
 # ---------------------------------------------------------------------------
 @app.get("/api/model-info")
 def get_xgboost_model_info():
-    """Returns metadata about the XGBoost model (provenance, metrics, training date)."""
-    return get_model_info()
+    """Returns metadata about the XGBoost model (provenance, metrics, drift)."""
+    info = get_model_info()
+    try:
+        info["drift"] = check_model_drift()
+    except Exception as e:
+        logger.warning(f"Drift check failed: {e}")
+        info["drift"] = {"drift": "unknown", "psi": {}}
+    return info
 
 # ---------------------------------------------------------------------------
 # WebSocket — Real-Time Market Data
