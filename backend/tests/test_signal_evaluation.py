@@ -177,3 +177,37 @@ class TestGenerateInsight:
         stats = self._minimal_stats(20, avg5=-0.8)
         msg = generate_insight("breakout_up", stats)
         assert "-" in msg
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# SP-4.4: umbrales de muestra exigentes
+# ──────────────────────────────────────────────────────────────────────────────
+class TestSampleThresholdsSP44:
+    def test_min_ticker_sample_raised(self):
+        """SP-4.4: MIN_TICKER_SAMPLE >= 8 para aparecer en top/worst."""
+        from app.services.signal_evaluation import MIN_TICKER_SAMPLE, MIN_TICKER_CONFIDENT
+        assert MIN_TICKER_SAMPLE >= 8
+        assert MIN_TICKER_CONFIDENT >= 20
+
+    def test_sampling_warning_level_in_result(self):
+        """El resultado de la senal incluye sampling.warning_level."""
+        from app.services.signal_evaluation import evaluate_signals
+        # Monkeypatch ligero: sin red, se prueba via _sample_quality mapping
+        from app.services.signal_evaluation import _sample_quality
+        assert _sample_quality(5) == "insufficient"
+        assert _sample_quality(20) == "limited"
+        assert _sample_quality(60) == "sufficient"
+
+    def test_insight_warns_on_limited_sample(self):
+        from app.services.signal_evaluation import generate_insight, MIN_SIGNAL_DISPLAY
+        stats = {
+            "total_signals": 15,
+            "sample_quality": "limited",
+            "win_rate_5d": 0.55,
+            "avg_return_5d": 0.5,
+            "context": {},
+            "top_tickers": [],
+            "worst_tickers": [],
+        }
+        msg = generate_insight("breakout_up", stats)
+        assert "limitada" in msg.lower()

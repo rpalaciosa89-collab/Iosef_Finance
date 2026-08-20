@@ -6,8 +6,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 # ── Constants ─────────────────────────────────────────────────────────────────
-MIN_TICKER_SAMPLE = 3          # Minimum occurrences for a ticker to appear in top/worst
-MIN_TICKER_CONFIDENT = 5       # Minimum for a ticker to appear without warning
+MIN_TICKER_SAMPLE = 8          # Minimum occurrences for a ticker to appear in top/worst
+MIN_TICKER_CONFIDENT = 20      # Minimum for a ticker to appear without warning
 MIN_SIGNAL_DISPLAY = 10        # Minimum for a signal to generate insights
 SAMPLE_SUFFICIENT = 40         # >= this → "sufficient"
 SAMPLE_LIMITED_LOW = 10        # >= this → "limited"
@@ -61,6 +61,10 @@ def generate_insight(name: str, stats: dict) -> str:
 
     # 1. Core stat
     parts.append(f"Win rate del {wr5:.0f}% sobre {total} ocurrencias ({quality}).")
+
+    # SP-4.4: advertencia dura si la muestra no es suficiente
+    if quality in ("limited", "insufficient"):
+        parts.append("Muestra limitada: la conclusion tiene baja significancia estadistica.")
 
     # 2. PnL direction
     if avg5 > 0:
@@ -256,6 +260,9 @@ def evaluate_signals(tickers: list[str], period: str = "2y") -> dict:
         # ── Confidence / sample quality ───────────────────────────────────
         quality = _sample_quality(total)
 
+        # SP-4.4: nivel de warning por muestra (ok / limited / insufficient)
+        warning_level = "ok" if quality == "sufficient" else quality
+
         if total >= 100 and wr5 > 0.60:
             confidence = "high_confidence"
         elif total >= SAMPLE_SUFFICIENT:
@@ -266,6 +273,7 @@ def evaluate_signals(tickers: list[str], period: str = "2y") -> dict:
         return {
             "total_signals": total,
             "sample_quality": quality,
+            "sampling": {"warning_level": warning_level},
             "win_rate_1d": round(wr1, 4),
             "win_rate_5d": round(wr5, 4),
             "win_rate_20d": round(wr20, 4),
