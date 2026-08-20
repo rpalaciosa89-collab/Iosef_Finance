@@ -5,6 +5,13 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from app.db.database import Base, get_db
 
+# Registro explicito de TODOS los modelos para que la metadata este completa
+# (evita NoReferencedTableError cuando otros test files importan schemas antes).
+from app.models.user import User  # noqa: F401,E402
+from app.models.paper_trading import (  # noqa: F401,E402
+    PaperAccount, PaperPosition, PaperTrade,
+)
+
 TEST_DATABASE_URL = "sqlite:///./test_iosef.db"
 
 test_engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})

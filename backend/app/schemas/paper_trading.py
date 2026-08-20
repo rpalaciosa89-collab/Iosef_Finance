@@ -1,10 +1,11 @@
 """
 Paper Trading Schemas (Pydantic V2)
 """
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 from typing import Optional, List
 from datetime import datetime
 from app.models.paper_trading import TradeDirection, TradeStatus
+from app.core.validators import validate_ticker
 
 
 # ── Account ──────────────────────────────────────────────────────────────────
@@ -33,6 +34,11 @@ class ExecuteTradeRequest(BaseModel):
     stop_loss:      Optional[float] = None
     take_profit:    Optional[float] = None
     signal_source:  str = "IOSEF_ML"
+
+    @field_validator("ticker")
+    @classmethod
+    def _validate_ticker(cls, v: str) -> str:
+        return validate_ticker(v)
 
 
 # ── Position ──────────────────────────────────────────────────────────────────
