@@ -13,9 +13,12 @@ Solución elegida (blob JSON):
 """
 
 import json
+import logging
 import os
 import time
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 PARQUET_CACHE_DIR = os.path.join(
@@ -41,7 +44,7 @@ def write_parquet_cache(market: str, payload: dict) -> None:
     except ImportError:
         pass  # pyarrow not installed, skip parquet
     except Exception as e:
-        print(f"[parquet] Write error for {market}: {e}")
+        logger.warning(f"[parquet] Write error for {market}: {e}")
 
 
 def read_parquet_cache(market: str) -> Optional[dict]:
@@ -59,5 +62,5 @@ def read_parquet_cache(market: str) -> Optional[dict]:
     except ImportError:
         pass
     except Exception as e:
-        print(f"[parquet] Read error for {market}: {e}")
+        logger.warning(f"[parquet] Read error for {market}: {e}")
     return None

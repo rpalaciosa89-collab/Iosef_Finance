@@ -12,8 +12,11 @@ Anti-lookahead guarantee:
 import numpy as np
 import pandas as pd
 import yfinance as yf
+import logging
 from typing import Optional
 from app.services.scoring import get_confidence_label, compute_signal_score
+
+logger = logging.getLogger(__name__)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Helpers
@@ -434,7 +437,7 @@ def run_strategy_optimization(tickers: list, period: str = "2y") -> dict:
       individual_signals, combined_signals, exit_rules, ranking, summary,
       market_context
     """
-    print(f"[optimizer] Downloading {len(tickers)} tickers, period={period}…")
+    logger.info(f"[optimizer] Downloading {len(tickers)} tickers, period={period}...")
     data = yf.download(tickers, period=period, progress=False)
 
     if "Close" not in data:
@@ -444,7 +447,7 @@ def run_strategy_optimization(tickers: list, period: str = "2y") -> dict:
     volumes = data["Volume"].reindex(columns=closes.columns).fillna(0)
 
     valid_tickers = closes.columns.tolist()
-    print(f"[optimizer] {len(valid_tickers)} tickers with valid data.")
+    logger.info(f"[optimizer] {len(valid_tickers)} tickers with valid data.")
 
     # ── Indicators (using only data available at t) ────────────────────────────
     sma50       = closes.rolling(50).mean()
@@ -529,7 +532,7 @@ def run_strategy_optimization(tickers: list, period: str = "2y") -> dict:
     }
 
     # ── Evaluate individual signals ────────────────────────────────────────────
-    print("[optimizer] Evaluating individual signals…")
+    logger.info("[optimizer] Evaluating individual signals...")
     individual_results: dict = {}
     for name, mask in individual_masks.items():
         stats = _compute_metrics(
@@ -539,7 +542,7 @@ def run_strategy_optimization(tickers: list, period: str = "2y") -> dict:
         individual_results[name] = stats
 
     # ── Evaluate combined signals ──────────────────────────────────────────────
-    print("[optimizer] Evaluating combined signals…")
+    logger.info("[optimizer] Evaluating combined signals...")
     combined_results: dict = {}
     for name, (mask, base_key) in combined_defs.items():
         stats = _compute_metrics(
@@ -559,7 +562,7 @@ def run_strategy_optimization(tickers: list, period: str = "2y") -> dict:
         combined_results[name] = stats
 
     # ── Phase 4: Exit Rule Backtest (using breakout_up as entry) ──────────────
-    print("[optimizer] Backtesting exit rules…")
+    logger.info("[optimizer] Backtesting exit rules...")
     entry_for_exit = _deduplicate_mask(breakout_up.fillna(False).astype(bool), window=3)
 
     exit_results = {
@@ -594,13 +597,13 @@ def run_strategy_optimization(tickers: list, period: str = "2y") -> dict:
     }
 
     # ── Phase 5: Ranking ──────────────────────────────────────────────────────
-    print("[optimizer] Generating ranking…")
+    logger.info("[optimizer] Generating ranking...")
     ranking = _generate_ranking(individual_results, combined_results)
 
     # ── Summary text ──────────────────────────────────────────────────────────
     summary = _generate_summary(individual_results, combined_results, exit_results, ranking)
 
-    print("[optimizer] ✓ Done.")
+    logger.info("[optimizer] Done.")
     return {
         "individual_signals": individual_results,
         "combined_signals":   combined_results,

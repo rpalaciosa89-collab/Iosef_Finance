@@ -995,6 +995,41 @@ app.include_router(backtest.router,  prefix="/api/backtest",      tags=["backtes
 app.include_router(pt_router.router, prefix="/api/paper-trading", tags=["paper-trading"])
 app.include_router(llm_router,       prefix="/api/llm",           tags=["llm"])
 
+# SP-6.4: logging estructurado JSON con request_id (correlacion distribuida)
+from app.core.logging_setup import setup_logging, request_id_var
+
+setup_logging()
+
+@app.middleware("http")
+async def add_request_id_and_access_log(request: Request, call_next):
+    import logging
+    import uuid
+    import time as _time
+
+    request_id = request.headers.get("X-Request-Id", uuid.uuid4().hex[:16])
+    request_id_var.set(request_id)
+    start = _time.perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception:
+        raise
+    finally:
+        response = locals().get("response")
+        if response is not None:
+            response.headers["X-Request-Id"] = request_id
+            latency_ms = round((_time.perf_counter() - start) * 1000, 2)
+            logging.getLogger("access").info(
+                f"{request.method} {request.url.path} -> {response.status_code} ({latency_ms}ms)",
+                extra={
+                    "request_id": request_id,
+                    "route": request.url.path,
+                    "method": request.method,
+                    "status_code": response.status_code,
+                    "latency_ms": latency_ms,
+                },
+            )
+    return response
+
 @app.middleware("http")
 async def add_cache_control_headers(request: Request, call_next):
     response = await call_next(request)
