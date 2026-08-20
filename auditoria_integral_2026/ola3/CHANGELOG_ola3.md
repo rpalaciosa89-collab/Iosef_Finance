@@ -1,94 +1,64 @@
-# Ola 3 — Base de CI/CD + Testing — CHANGELOG
+# Ola 3 — Estabilización y Configuración Única — CHANGELOG
 
-**Fecha:** 2026-06-10
-**Ejecutor:** Auditor Integral de Plataforma Financiera (Agente)
-**Duración real:** ~3 horas
-**Duración estimada:** ~8 horas
+**Fecha:** 2026-08-20
+**Metodología:** Spec-Driven Development + Loop Engineering (plan `docs/plan_mejoras_sdd_loop_engineering.md`)
+**Estado previo:** 52 tests | parquet cache roto | config divergente | 2 entrypoints | SQLite sin WAL/migraciones
 
 ---
 
 ## Resumen
 
-Creada la infraestructura de testing automatizado: pipeline CI/CD con GitHub Actions, 19 tests de integración HTTP para backend y 5 tests Vitest para frontend. La red de seguridad para todas las olas siguientes está establecida.
+Cerradas 5 specs de la Ola 3. La plataforma ahora arranca con configuración unificada,
+cache parquet funcional, migraciones versionadas y validación de inputs. Todos los cambios
+fueron commit atómicos `[Ola3.X]` y pusheados a `origin/main`.
 
-## Hallazgos Resueltos
+## Specs Cerradas
 
-| ID | Severidad | Descripción | Estado |
+| ID | Título | Estado |
+|---|---|---|
+| SP-3.1 | Fix cache parquet (round-trip tipos mixtos) | ✅ |
+| SP-3.2 | Cargar `.env` real (unificar DATABASE_URL) | ✅ |
+| SP-3.3 | Unificar CORS y eliminar entrypoint secundario | ✅ |
+| SP-3.4 | SQLite WAL + migraciones Alembic | ✅ |
+| SP-3.5 | Validación de ticker en endpoints | ✅ |
+
+## Métricas de Bucle (registro obligatorio)
+
+| Métrica | Antes | Después | Target |
 |---|---|---|---|
-| H-005 | Alta | Ausencia total de CI/CD | ✅ Resuelto |
-| H-009 | Media | Sin tests de integración HTTP | ✅ Resuelto |
-| H-007 | Alta | Sin tests de frontend | ✅ Resuelto |
+| `back.tests_verdes` | 52 | **77** | 100% |
+| `back.tests_tiempo` | 104 s | **73 s** | < 5 min |
+| `front.build_ok` | — | ✅ exit 0 | exit 0 |
+| `scan.cache_ok` | ❌ `[parquet] Write error` en cada scan | ✅ escribe+lee 98 tickers | 3 scans sin error |
+| `db.unificado` | 3 candidatas + `.env` ignorado | **1 activa** (`sqlite:///./iosef_finance.db`, reportada en `/api/health`) | 1 |
+| `db.wal` | no | **WAL activo** | wal |
+| `db.drift_alembic` | sin migraciones | **0 drift** (`alembic check`) | 0 |
 
-## Pasos Ejecutados
+## Commits
 
-### Paso 3.0 — Backup ✅
-- Documentado en `auditoria_integral_2026/ola3/backup_antes.md`
+```
+aed5953 [Ola3.1] fix(cache): reparar cache parquet con blob JSON (round-trip tipos mixtos)
+686470b [Ola3.2] config: cargar .env real, unificar DATABASE_URL via settings, health reporta DB
+ff2b9c9 [Ola3.3] refactor: eliminar entrypoint app/main.py, CORS unico desde CORS_ORIGINS
+e2c6397 [Ola3.4] db: activar SQLite WAL y migraciones Alembic (esquema inicial + stamp DB real)
+ad100fa chore: excluir artefactos SQLite WAL (db-shm, db-wal) del repo
+4019604 [Ola3.5] security: validar ticker en schema paper-trading y endpoint backtest
+```
 
-### Pasos 3.1-3.3 — Pipeline CI/CD ✅
-- **Archivo:** `.github/workflows/ci.yml` (nuevo)
-- 2 jobs: `backend-tests` (pytest) + `frontend` (test + lint + build)
-- Redis como service container para tests backend
-- YAML validado con parser
+## Retrospectiva (bucle 4)
 
-### Paso 3.4 — Tests de integración auth ✅
-- **Archivos:** `backend/tests/conftest.py`, `backend/tests/test_api/test_auth.py`
-- 8 tests: registro, duplicado, login válido/inválido/inexistente, endpoint protegido sin token, con token, con token falso
-- Fixtures con TestClient, override de BD a SQLite en memoria, mock de Redis
+1. **Qué mejoró y cuánto:** tests 52→77 (+48%); parquet cache operativo; config unificada; WAL + Alembic; validación de inputs.
+2. **Qué se atrasó:** nada. Todos los ítems en el tiempo previsto.
+3. **Supuesto confirmado:** el runtime realmente usaba `./iosef_finance.db` (no el `.env`) — confirmado al exponer la DB en `/api/health`.
+4. **Nuevos ítems para backlog:**
+   - Refactor del `startup_event` (deprecation warning de FastAPI `on_event`).
+   - `datetime.utcnow()` deprecado en `security.py`, `server.py`, modelos (migrar a `datetime.now(UTC)`).
+   - Rate limiting de yfinance: considerar proveedor secundario o backoff.
+   - Reducir warnings de pytest (2380 → objetivo < 200).
 
-### Paso 3.5 — Tests de integración paper trading ✅
-- **Archivos:** `backend/tests/test_api/test_paper_trading.py`
-- 11 tests: crear cuenta, duplicado, sin auth, portfolio vacío, portfolio con cuenta, execute trade, trade sin auth, trade sin cuenta, refresh, refresh sin auth
+## Estado Actual
 
-### Paso 3.6 — Tests frontend Vitest ✅
-- **Archivos:** `frontend-v2/src/__tests__/AuthContext.test.tsx`, `ProtectedRoute.test.tsx`
-- 5 tests: no autenticado inicialmente, login, logout, persistencia entre renders, redirección ProtectedRoute
-- Vitest + @testing-library/react + jsdom + localStorage mock
-- Scripts `test` y `test:watch` en package.json
-
-### Paso 3.7 — Verificación de regresión ✅
-- Backend: 52 tests (33 unit + 19 integration) ✅
-- Frontend: 5 tests (2 suites) ✅
-- Frontend build: exitoso ✅
-- Backend health: 200 ✅
-
-## Archivos Creados/Modificados
-
-| Archivo | Cambio |
-|---|---|
-| `.github/workflows/ci.yml` | **Nuevo** — pipeline CI con 2 jobs |
-| `backend/tests/conftest.py` | **Nuevo** — fixtures compartidos |
-| `backend/tests/test_api/__init__.py` | **Nuevo** |
-| `backend/tests/test_api/test_auth.py` | **Nuevo** — 8 tests auth |
-| `backend/tests/test_api/test_paper_trading.py` | **Nuevo** — 11 tests paper trading |
-| `frontend-v2/src/__tests__/AuthContext.test.tsx` | **Nuevo** — 4 tests |
-| `frontend-v2/src/__tests__/ProtectedRoute.test.tsx` | **Nuevo** — 1 test |
-| `frontend-v2/src/test-setup.ts` | **Nuevo** — localStorage mock + jest-dom |
-| `frontend-v2/src/vite-env.d.ts` | **Nuevo** — vitest/config reference |
-| `frontend-v2/vite.config.ts` | test config (jsdom, globals, setupFiles) |
-| `frontend-v2/package.json` | scripts test/test:watch + dependencias |
-
-## Problemas Encontrados
-
-1. **Race condition de tablas en test DB** — Resuelto parchando `server.engine` en el conftest
-2. **`localStorage.clear()` no definido en jsdom** — Resuelto con mock manual en `test-setup.ts`
-
-## Métricas
-
-| Métrica | Antes | Después |
-|---|---|---|
-| Tests backend | 33 | **52** (+58%) |
-| Tests frontend | 0 | **5** |
-| Cobertura CI | 0% | **100%** |
-| Pipeline jobs | 0 | **2** |
-
-## Score
-
-| Dimensión | Antes (post-Ola 2) | Después |
-|---|---|---|
-| Testing | 2/10 | 5/10 |
-| DevOps | 2/10 | 5/10 |
-| **Global** | **6/10** | **7.5/10** |
-
----
-
-*Ola 3 completada exitosamente. La red de seguridad para Olas 4-6 está lista.*
+- **Tests:** 77 passed
+- **Build frontend:** OK
+- **Runtime:** backend en 8002 con health `{"status":"ok","database":"sqlite:///./iosef_finance.db"}`
+- **Siguiente ola:** Ola 4 — Validación cuantitativa (SP-4.1 backtester con costos/benchmark, SP-4.2 walk-forward XGBoost)
