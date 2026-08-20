@@ -38,7 +38,7 @@ from app.services.drift_monitor import check_model_drift
 logger = logging.getLogger(__name__)
 from app.services.human_layer import translate_ticker, _detect_situation
 from app.services import persistence
-from app.services.lstm_inference import get_composite_score, get_lstm_score
+from app.services.lstm_inference import get_composite_score, get_lstm_score, _lstm_is_promoted
 from config.titan_universe import TITAN_100
 
 from app.api import auth, backtest, paper_trading as pt_router
@@ -1288,6 +1288,7 @@ def get_neural_score(ticker: str = Path(..., pattern=r"^[A-Za-z0-9\.\-]{1,10}$")
             "model":           composite["model"],
             "signal":          signal,
             "alignment":       alignment,
+            "lstm_status":     "active" if _lstm_is_promoted() else "archived",
         }
         redis_set(cache_key, result, 60)
         return {"cached": False, "data": result}

@@ -32,6 +32,8 @@ def disable_rate_limiting():
 
 @pytest.fixture(scope="function")
 def db_session():
+    # Limpiar estado residual de corridas previas (evita flakiness del registro)
+    Base.metadata.drop_all(bind=test_engine)
     Base.metadata.create_all(bind=test_engine)
     db = TestingSessionLocal()
     try:

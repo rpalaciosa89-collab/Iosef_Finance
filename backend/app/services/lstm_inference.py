@@ -11,6 +11,7 @@ Licencia de dependencias: PyTorch (BSD), Numpy (BSD)
 """
 
 import sys
+import json
 import logging
 from pathlib import Path
 from functools import lru_cache
@@ -72,6 +73,19 @@ def _load_model() -> tuple[nn.Module, torch.device]:
 SEQ_LEN      = 60
 FEATURE_COLS = ["volume_norm", "log_return", "momentum_10", "rsi_14", "macd_hist"]
 
+# ── Gate de promocion (SP-4.2 aplicado a LSTM) ─────────────────────────────────
+# Ver app/core/ml_gates.py: el reporte de walk-forward dicta si el LSTM opera.
+# AUC OOS real (2026-08-20): 0.5155 -> ARCHIVADO.
+from app.core.ml_gates import lstm_is_promoted as _lstm_is_promoted
+
+
+def _check_lstm_gate() -> bool:
+    """Devuelve False si el LSTM esta archivado (y lo loguea una vez)."""
+    if not _lstm_is_promoted():
+        logger.warning("LSTM archivado (AUC OOS < 0.56): score neural desactivado.")
+        return False
+    return True
+
 
 def _build_features(df: pd.DataFrame) -> pd.DataFrame | None:
     """Replica exactamente el feature engineering del training."""
@@ -110,8 +124,12 @@ def get_lstm_score(ticker: str) -> float | None:
     """
     Retorna el Neural Confidence Score P_lstm(Win) ∈ [0, 1] para un ticker.
     Usa los últimos 60 días de historia almacenada en Parquet.
-    Retorna None si el ticker no está en el Titan 100 o no hay datos suficientes.
+    Retorna None si el ticker no está en el Titan 100, no hay datos suficientes,
+    o el modelo está archivado por el gate walk-forward (AUC OOS < 0.56).
     """
+    if not _check_lstm_gate():
+        return None
+
     parquet_path = DATA_DIR / f"{ticker.replace('/', '_')}.parquet"
     if not parquet_path.exists():
         return None

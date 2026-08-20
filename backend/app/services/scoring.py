@@ -1,6 +1,7 @@
 import joblib
 import json
 import logging
+import threading
 import pandas as pd
 from pathlib import Path
 import xgboost as xgb
@@ -10,12 +11,28 @@ logger = logging.getLogger(__name__)
 MODEL_PATH = Path(__file__).resolve().parent.parent.parent / "models" / "xgboost_signal_scorer.pkl"
 META_PATH = Path(__file__).resolve().parent.parent.parent / "models" / "xgboost_signal_scorer_meta.json"
 
-try:
-    xgb_model = joblib.load(MODEL_PATH)
-    logger.info("Modelo XGBoost cargado con éxito para inferencia.")
-except Exception as e:
-    logger.warning(f"No se pudo cargar el modelo XGBoost: {e}")
-    xgb_model = None
+# Carga lazy: evita colision de inicializadores (torch+xgboost/OpenMP) y agiliza
+# el arranque. El modelo se carga en el primer compute_ml_score.
+_xgb_model = None
+_model_lock = threading.Lock()
+_model_loaded = False
+
+
+def _load_xgb_model():
+    """Carga el modelo XGBoost una sola vez (thread-safe)."""
+    global _xgb_model, _model_loaded
+    if _model_loaded:
+        return _xgb_model
+    with _model_lock:
+        if not _model_loaded:
+            try:
+                _xgb_model = joblib.load(MODEL_PATH)
+                logger.info("Modelo XGBoost cargado con éxito para inferencia.")
+            except Exception as e:
+                logger.warning(f"No se pudo cargar el modelo XGBoost: {e}")
+                _xgb_model = None
+            _model_loaded = True
+    return _xgb_model
 
 
 def _load_model_meta() -> dict:
@@ -49,14 +66,15 @@ def compute_ml_score(features: dict) -> float:
     SP-4.2: si el modelo no esta `promoted` (gate AUC OOS < 0.56), devuelve
     el fallback 50.0 (sin señal) en lugar de usar un modelo sin edge.
     """
-    if xgb_model is None:
+    model = _load_xgb_model()
+    if model is None:
         return 50.0  # Fallback si no hay modelo
 
     meta = _load_model_meta()
     if meta.get("promoted") is False:
         logger.info("Modelo archivado (gate AUC no superado); score ML desactivado.")
         return 50.0
-        
+
     try:
         # Expected features: log_return, volatility_20, momentum_10, rsi_14, macd_hist
         df = pd.DataFrame([features])
@@ -66,7 +84,7 @@ def compute_ml_score(features: dict) -> float:
                 df[col] = 0.0
                 
         # Predict probability of class 1 (Success)
-        prob = xgb_model.predict_proba(df)[0, 1]
+        prob = model.predict_proba(df)[0, 1]
         return round(prob * 100, 1) # Return as percentage 0-100
     except Exception as e:
         logger.error(f"Error en inferencia ML: {e}")

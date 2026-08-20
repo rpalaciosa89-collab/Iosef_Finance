@@ -1,0 +1,10 @@
+{
+  "generated_at": "2026-08-20T21:17:57.213019+00:00",
+  "model": "global_lstm_titan100",
+  "method": "walk_forward_60_40_purged_5d",
+  "n_train": 242166,
+  "n_valid": 23198,
+  "auc_oos": 0.5155,
+  "promotion_threshold": 0.56,
+  "promoted": false
+}
